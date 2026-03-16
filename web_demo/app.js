@@ -121,11 +121,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.warn("AI returned empty result");
                 editor.classList.remove('opacity-50');
             } else {
-                alert("Improvement failed: " + (data.error || "Unknown error"));
+                // User-friendly error messages from backend
+                const errorMsg = data.error || "Failed to process request.";
+                alert("Leela says: " + errorMsg);
             }
         } catch (error) {
             console.error("Error improving text:", error);
-            alert("Failed to connect to Leela server.");
+            alert("Connection error: Please check your internet or try again later.");
         } finally {
             editor.classList.remove('opacity-50');
             stopDictation();

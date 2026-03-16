@@ -115,23 +115,34 @@ app.post('/api/improve', async (req, res) => {
     const { text, command } = req.body;
     if (!text) return res.status(400).json({ success: false, error: 'Text is required' });
 
+    if (!SARVAM_API_KEY) {
+        console.error("Missing SARVAM_API_KEY in environment");
+        return res.status(500).json({
+            success: false,
+            error: "AI service not configured"
+        });
+    }
+
     try {
-        console.log("API_RECEIVED_REQUEST:", req.body);
+        console.log("REQUEST_PAYLOAD:", req.body);
         const response = await axios.post('https://api.sarvam.ai/v1/chat/completions', {
             model: "sarvam-m",
-
             messages: [
                 {
                     role: "system",
-                    content: `You are a strict text transformation engine.
-Your sole job is to transform "INPUT_TEXT" according to "USER_INSTRUCTION".
+                    content: `You are a writing assistant.
+Your task is to improve the quality of the user's text by:
+* correcting grammar
+* improving clarity
+* improving sentence structure
+* preserving the original meaning
 
 STRICT RULES:
-1. Return ONLY the final transformed text.
-2. Absolutely NO reasoning, explanations, or internal thinking.
-3. Absolutely NO <think> or <thought> tags.
-4. Absolutely NO quotes around the output.
-5. NO metadata, scores, or comments.
+1. Do not translate the language.
+2. Return ONLY the final improved text.
+3. Absolutely NO reasoning, explanations, or internal thinking.
+4. Absolutely NO <think> or <thought> tags.
+5. Absolutely NO quotes around the output.
 6. The output must be clean, copy-ready text.`
                 },
                 {
@@ -146,15 +157,18 @@ STRICT RULES:
             }
         });
 
+        console.log("AI_RESPONSE:", response.data);
         const rawOutput = response.data.choices[0].message.content;
-        console.log("AI_RAW_RESPONSE:", response.data);
         const result = sanitizeOutput(rawOutput);
         console.log(`[Server] Sanitized result: "${result}"`);
         res.json({ success: true, result });
 
     } catch (error) {
         console.error('[Server] Improve error:', error.response?.data || error.message);
-        res.status(500).json({ success: false, error: 'Failed to improve text' });
+        res.status(500).json({ 
+            success: false, 
+            error: "AI service temporarily unavailable" 
+        });
     }
 });
 

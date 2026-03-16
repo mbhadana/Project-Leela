@@ -2,7 +2,7 @@ const axios = require('axios');
 
 const text = "I Want Write A Message About My Project Idea But My Writing Not Very Good";
 const commands = [
-    "Polish text",
+    "Improve writing",
     "Translate to Hindi",
     "Make it professional",
     "Summarize"

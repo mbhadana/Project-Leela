@@ -16,13 +16,8 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// Redundant on Vercel as it serves 'public' automatically, but kept for local dev if needed
-if (process.env.NODE_ENV !== 'production') {
-    app.use(express.static(path.join(__dirname, '..', 'public')));
-}
-
-
 const SARVAM_API_KEY = process.env.SARVAM_API_KEY;
+
 
 /**
  * Robust sanitization helper to strip all tags and conversational preludes.

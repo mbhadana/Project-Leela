@@ -112,8 +112,8 @@ async function run() {
       }, {
         headers: { 'api-subscription-key': apiKey },
         timeout: 30000
-      });
-      finalResult = polishRes.data?.choices?.[0]?.message?.content?.trim() || transcript;
+      const { sanitizeAIOutput } = require('./src/utils/sanitize_output');
+      finalResult = sanitizeAIOutput(polishRes.data?.choices?.[0]?.message?.content || transcript);
       console.log('Polished Transcript:', finalResult);
     } catch (e) {
       console.warn('Polishing failed, using original transcript:', e.message);

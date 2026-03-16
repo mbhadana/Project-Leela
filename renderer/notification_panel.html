@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="notification_panel.css">
+</head>
+<body>
+    <div id="notification-panel" class="chat-panel">
+        <header class="panel-header">
+            <div class="header-left">
+                <div class="hub-title">N8n Command Assistant</div>
+                <div class="hub-subtitle">Conversational workflow control</div>
+            </div>
+            <div class="status-indicators">
+                <span class="status-dot"></span>
+                <span class="status-text">LIVE</span>
+            </div>
+        </header>
+
+        <section class="integration-bar">
+            <input type="text" id="n8n-webhook-url" placeholder="https://your-n8n-domain/webhook/leela-command" autocomplete="off">
+            <button class="btn btn-muted" id="n8n-save-btn">Save</button>
+            <button class="btn btn-success" id="n8n-test-btn">Send Test</button>
+            <div class="n8n-status" id="n8n-status">Not configured</div>
+        </section>
+
+        <main class="chat-scroll" id="chat-scroll">
+            <div class="chat-history" id="chat-history"></div>
+        </main>
+
+        <footer class="panel-footer">
+            <div class="command-input-wrapper">
+                <input type="text" id="command-input" placeholder="Type a command (e.g., Schedule meeting)" autocomplete="off">
+                <button id="mic-btn" class="mic-btn" title="Voice dictation (Ctrl+Space)" type="button">Mic</button>
+                <div class="kbd-hint">ENTER</div>
+            </div>
+            <div class="footer-hint">Press Enter to send, Ctrl+Space for voice, ESC to dismiss</div>
+        </footer>
+    </div>
+
+    <script src="notification_panel.js"></script>
+</body>
+</html>

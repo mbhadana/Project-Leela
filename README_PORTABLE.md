@@ -34,10 +34,11 @@ That's it. Leela is ready.
 
 ## How It Works
 
-- **Ctrl+Space** — Start/stop voice dictation
-- **Select text + Ctrl+Space (tap)** — Instantly polish selected text
-- **Select text + Ctrl+Space (hold + speak)** — Voice command on selected text
-- **System tray icon** — Right-click for dashboard and settings
+- **Ctrl+Space** - Start/stop voice dictation
+- **Select text + Ctrl+Space (tap)** - Instantly polish selected text
+- **Select text + Ctrl+Space (hold + speak)** - Voice command on selected text
+- **Alt+Space** - Toggle AI assistant side panel
+- **System tray icon** - Right-click for dashboard and settings
 
 ---
 

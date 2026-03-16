@@ -7,7 +7,14 @@
     "start": "electron .",
     "build:protect": "node build_protected.js",
     "build-portable": "npm run build:protect && cd dist_protected && npm install --omit=dev && cd .. && rd /s /q release-portable && npx electron-packager dist_protected LeelaV1 --platform=win32 --arch=x64 --out=release-portable --overwrite --icon=assets/icon.ico",
-    "dist": "npm run build-portable"
+    "dist": "npm run build-portable",
+    "test:hotkey": "node tests/hotkey_state_machine.test.js",
+    "test:text": "node tests/text_processing.test.js",
+    "test:adapter": "node tests/json_file_adapter.test.js",
+    "test:history": "node tests/history_repository.test.js",
+    "test:settings": "node tests/settings_repository.test.js",
+    "test:engine": "node tests/hotkey_engine.test.js",
+    "test:all": "node tests/hotkey_state_machine.test.js && node tests/text_processing.test.js && node tests/json_file_adapter.test.js && node tests/history_repository.test.js && node tests/settings_repository.test.js && node tests/hotkey_engine.test.js"
   },
   "build": {
     "appId": "com.leelav1.assistant",
@@ -38,11 +45,12 @@
     "sharp": "^0.34.5"
   },
   "dependencies": {
-    "axios": "^1.13.5",
+    "axios": "^1.13.6",
     "bytenode": "^1.5.7",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
     "ffmpeg-static": "^5.3.0",
     "form-data": "^4.0.5",
-    "sarvamai": "^1.0.0",
     "uiohook-napi": "^1.5.4"
   },
   "author": "Antigravity",

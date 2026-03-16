@@ -219,7 +219,7 @@ function main() {
     console.log('');
 
     // ── PHASE 4: Create Distribution Package ──────────────────
-    console.log('── PHASE 4: Package Distribution ───────────────────');
+    console.log('── PHASE 4: Package Executable ─────────────────────');
 
     // Copy README into dist
     const readmeSrc = path.join(ROOT, 'README_PORTABLE.md');
@@ -228,10 +228,32 @@ function main() {
         log('PASS', 'README_PORTABLE.md included in distribution');
     }
 
-    // Ensure release directory exists
-    if (!fs.existsSync(RELEASE_DIR)) {
-        fs.mkdirSync(RELEASE_DIR, { recursive: true });
+    // Install prod dependencies in dist_protected
+    try {
+        log('RUN', 'Installing production dependencies in dist_protected...');
+        execSync('npm install --omit=dev', { cwd: DIST_DIR, stdio: 'ignore' });
+        log('PASS', 'Node modules installed cleanly');
+    } catch (e) {
+        log('FAIL', `Failed to install prod dependencies: ${e.message}`);
+        printReport();
+        process.exit(1);
     }
+
+    // Run electron-packager
+    try {
+        log('RUN', 'Running electron-packager...');
+        if (fs.existsSync(RELEASE_DIR)) fs.rmSync(RELEASE_DIR, { recursive: true, force: true });
+        execSync(`npx electron-packager dist_protected LeelaV1 --platform=win32 --arch=x64 --out=release-portable --overwrite --icon=assets/icon.ico`, { cwd: ROOT, stdio: 'ignore' });
+        log('PASS', 'Executable generated successfully');
+    } catch (e) {
+        log('FAIL', `Packaging failed: ${e.message}`);
+        printReport();
+        process.exit(1);
+    }
+    console.log('');
+
+    // ── PHASE 5: Compress to ZIP ──────────────────────────────
+    console.log('── PHASE 5: Compress to ZIP ────────────────────────');
 
     // Read version from package.json
     let version = '1.0.0';
@@ -240,15 +262,28 @@ function main() {
         version = pkg.version || version;
     } catch (e) { }
 
-    log('PASS', `Distribution package ready (v${version})`);
-    log('INFO', 'Run electron-packager separately to create the final executable');
+    const outFolder = path.join(RELEASE_DIR, 'LeelaV1-win32-x64');
+    const zipName = `LeelaV1_v${version}_Portable.zip`;
+    const zipPath = path.join(ROOT, zipName);
+
+    try {
+        log('RUN', `Zipping folder to ${zipName}...`);
+        if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
+        // Using PowerShell Compress-Archive
+        execSync(`powershell -Command "Compress-Archive -Path '${outFolder}\\*' -DestinationPath '${zipPath}'"`, { cwd: ROOT, stdio: 'ignore' });
+        log('PASS', `ZIP archive created: ${zipName}`);
+    } catch (e) {
+        log('FAIL', `Zipping failed: ${e.message}`);
+        printReport();
+        process.exit(1);
+    }
     console.log('');
 
-    // ── PHASE 5: Security Report ──────────────────────────────
-    printReport();
+    // ── PHASE 6: Security Report ──────────────────────────────
+    printReport(zipName);
 }
 
-function printReport() {
+function printReport(zipName) {
     console.log('═══════════════════════════════════════════════════════');
     console.log(' SECURITY REPORT');
     console.log('═══════════════════════════════════════════════════════');
@@ -276,6 +311,8 @@ function printReport() {
         console.log('    ✅ Zero config files with secrets');
         console.log('    ✅ User keys stored locally via OS encryption');
         console.log('    ✅ Direct user→API communication (no proxy)');
+        console.log('');
+        console.log(`  📦 FINAL OUTPUT: ${zipName || 'ZIP file'}`);
     }
     console.log('');
     console.log('═══════════════════════════════════════════════════════');

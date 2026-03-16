@@ -1,0 +1,78 @@
+# Leela V1 — The Ultimate User Guide
+
+Welcome to **Leela V1**, your high-performance, privacy-first AI execution engine and assistant. This guide will help you master Leela's features from the first launch to advanced self-optimization.
+
+---
+
+## 1. Getting Started (Portable Edition)
+
+Leela V1 is designed to be **portable** and **secure**.
+
+1.  **Extract:** Unzip the [LeelaV1_v1.0.1_Portable.zip](file:///c:/Users/admin/LeelaV1/LeelaV1_v1.0.1_Portable.zip) folder anywhere on your computer (e.g., Desktop or a USB drive).
+2.  **Launch:** Double-click `LeelaV1.exe`.
+3.  **Setup Screen:** Since this is a "Zero Secret" distribution, Leela will ask for your **Sarvam API Key** on the first launch.
+    *   Get a key at [sarvam.ai](https://www.sarvam.ai/).
+    *   Paste your `sk_...` key into the setup box.
+    *   Leela will validate the key and encrypt it locally on your machine.
+4.  **Permissions:** If prompted, allow Leela access to your **Microphone** (for voice dictation) and **Accessibility** (for global keyboard shortcuts).
+
+---
+
+## 2. Core Interaction: The Master Hotkey
+
+Leela stays out of your way until you need her. Everything is controlled by the **Master Hotkey**: `Ctrl + Space`.
+
+### 🎙️ Pattern A: Voice Dictation (Tap Once)
+
+*   **Action:** Press `Ctrl+Space` once.
+*   **Response:** Leela starts listening (the tray icon turns red). Speak your thoughts.
+*   **Finish:** Press `Ctrl+Space` again.
+*   **Result:** Your speech is instantly transcribed and typed exactly where your cursor is.
+
+### ✨ Pattern B: AI Polish (Select + Tap)
+*   **Action:** Highlight some text (in any app like Word, Slack, or Browser) and press `Ctrl+Space` once.
+*   **Result:** Leela analyzes the text, polishes it for professional clarity, and automatically replaces the old text with the improved version.
+
+### 🤖 Pattern C: Voice Command (Select + Hold)
+*   **Action:** Highlight text, hold `Ctrl+Space`, and speak a command (e.g., *"Translate this to French"* or *"Turn this into a bulleted list"*).
+*   **Finish:** Release `Ctrl+Space`.
+*   **Result:** Leela executes your command on the selected text and replaces it.
+
+---
+
+## 3. The Self-Optimizing File System
+
+Leela V1 now includes a **Self-Optimizing Engine** that works silently in the background to keep your performance high and your storage light.
+
+### How it Works:
+*   **Analyzer:** Automatically detects file types and calculates "Entropy" (compression potential).
+*   **Strategy:** Selects between Lossless, Structural, or Perceptual compression to ensure you never lose more than 5% quality.
+*   **Validator:** Every optimization is validated. If quality drops too low, Leela **automatically rolls back** to the original file.
+*   **Learner:** Leela learns from every success. If a certain compression level works perfectly for your images, she will remember that for the next time.
+
+### Monitoring Performance:
+Open the **Dashboard** (Right-click tray icon → Dashboard) to see:
+*   Total storage saved.
+*   Average processing speed.
+*   "Learning Progress" charts.
+
+---
+
+## 4. Privacy & Security
+
+Leela is built for senior engineers and privacy-conscious users:
+*   **Local Storage:** Your API keys and settings are stored **only** on your machine using OS-level encryption (`safeStorage`).
+*   **Direct-to-API:** Your data goes directly from your computer to Sarvam AI. It never passes through a developer server.
+*   **Zero Logs of Secrets:** Leela’s internal logger is hardened to never record your tokens or private keys.
+
+---
+
+## 5. Troubleshooting
+
+*   **Hotkey doesn't work:** Ensure no other app is using `Ctrl+Space`. You can change the hotkey in the **Settings Panel**.
+*   **Microphone issues:** Check your Default Input Device in Windows/macOS sound settings.
+*   **API Key Error:** If your key is rejected, ensure you have active credits on your Sarvam AI dashboard.
+
+---
+
+*Leela V1 — Designed for speed. Built for stability. Optimized for you.*

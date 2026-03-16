@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leela V1 | Case Study Portfolio</title>
+    <!-- Modern Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Outfit:wght@300;400;600;900&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="portfolio_style.css">
+</head>
+
+<body class="dark-mode">
+    <nav class="glass-nav">
+        <div class="nav-content">
+            <span class="logo">LEELA <span class="accent">V1</span></span>
+            <div class="nav-links">
+                <a href="#overview">Overview</a>
+                <a href="#challenge">Challenge</a>
+                <a href="#solution">Solution</a>
+                <a href="#impact">Impact</a>
+            </div>
+        </div>
+    </nav>
+
+    <header class="hero">
+        <div class="hero-bg"></div>
+        <div class="container hero-content">
+            <h1 class="fade-in">Autonomous <span class="gradient-text">Self-Optimizing</span> AI Assistant</h1>
+            <p class="subtitle fade-in delay-1">Engineered for production. Hardened for security. Optimized for
+                performance.</p>
+            <div class="hero-badges fade-in delay-2">
+                <span class="badge">V8 Bytecode Protected</span>
+                <span class="badge">Zero-Secret Distribution</span>
+                <span class="badge">Self-Learning Pipeline</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <section id="overview" class="section glass-card fade-in delay-3">
+            <div class="section-header">
+                <span class="section-tag">Executive Summary</span>
+                <h2>Redefining AI Utility</h2>
+            </div>
+            <p>Leela V1 is a production-grade Electron application designed as a seamless AI execution engine. It
+                features a unique <strong>Self-Optimizing File & Performance System</strong> and a <strong>Zero-Secret
+                    Security Architecture</strong>, making it a premiere autonomous AI utility.</p>
+        </section>
+
+        <section id="challenge" class="section">
+            <div class="grid-2">
+                <div class="glass-card section-card">
+                    <span class="section-tag color-red">The Problem</span>
+                    <h3>The Distribution Dilemma</h3>
+                    <ul class="feature-list">
+                        <li><strong>Secret Leakage:</strong> Risk of exposing API keys in production builds.</li>
+                        <li><strong>Performance Decay:</strong> Bloated storage and slowing execution speeds over time.
+                        </li>
+                        <li><strong>User Friction:</strong> Complex installation and high-barrier setup flows.</li>
+                    </ul>
+                </div>
+                <div class="glass-card section-card">
+                    <span class="section-tag color-green">The Vision</span>
+                    <h3>Senior-Level Solution</h3>
+                    <p>Building a system that operates with zero supervision, maintains its own health, and guarantees
+                        total user privacy through industrial-grade encryption.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="solution" class="section glass-card">
+            <div class="section-header center">
+                <span class="section-tag">Technical Architecture</span>
+                <h2>The Three Pillars</h2>
+            </div>
+            <div class="pillar-grid">
+                <div class="pillar-item">
+                    <div class="pillar-icon">🧠</div>
+                    <h4>Autonomous Brain</h4>
+                    <p>7-stage optimization pipeline with recursive learning and automatic rollback safety guards.</p>
+                </div>
+                <div class="pillar-item">
+                    <div class="pillar-icon">🔒</div>
+                    <h4>Secret Isolation</h4>
+                    <p>V8 bytecode compilation and OS-level secure storage ensures developer-level privacy.</p>
+                </div>
+                <div class="pillar-item">
+                    <div class="pillar-icon">💨</div>
+                    <h4>Invisible UX</h4>
+                    <p>Pattern-based global hotkeys for dictation, polishing, and voice commands with zero latency.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="impact" class="section">
+            <div class="stats-row">
+                <div class="stat-card">
+                    <span class="stat-value">60%</span>
+                    <span class="stat-label">File Size Reduction</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value">95%+</span>
+                    <span class="stat-label">Perceptual Quality</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value">0</span>
+                    <span class="stat-label">Secret Leaks</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value">714MB</span>
+                    <span class="stat-label">Portable ZIP Size</span>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container footer-content">
+            <span class="logo">LEELA <span class="accent">V1</span></span>
+            <p>Case Study Portfolio — Designed for Excellence.</p>
+        </div>
+    </footer>
+
+    <script>
+        // Simple Intersection Observer for Fade-in effects
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, { threshold: 0.1 });
+
+        document.querySelectorAll('.section').forEach(section => {
+            observer.observe(section);
+        });
+    </script>
+</body>
+
+</html>

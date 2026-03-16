@@ -11,6 +11,8 @@ const activityLogger = require('./activity_logger');
 const secretManager = require('./secret_manager');
 const platformHelper = require('./platform_helper');
 const optimizer = require('./optimizer');
+const { HotkeyEngine } = require('./src/hotkey_engine');
+const { registerIpcHandlers } = require('./src/ipc_router');
 const { uIOhook } = require('uiohook-napi');
 
 // Set App User Model ID for Windows Taskbar consistency
@@ -114,6 +116,8 @@ process.on('unhandledRejection', (reason) => {
 let isProcessingHotkey = false;
 let statusWindow;
 let dashboardWindow;
+let notificationWindow;
+let hotkeyEngine;
 
 const AppStates = {
   IDLE: 'IDLE',
@@ -162,8 +166,9 @@ function createStatusWindow() {
     focusable: false,
     icon: platformHelper.getIconPath(__dirname),
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'src', 'preload.js'),
     }
   });
 
@@ -186,6 +191,11 @@ function updateState(state, message = null) {
   if (currentStateStatus !== state) {
     console.log(`[STATE] Transition: ${currentStateStatus} -> ${state}`);
     currentStateStatus = state;
+    
+    // Sync with HotkeyEngine if initialized
+    if (hotkeyEngine) {
+      hotkeyEngine.onAppStateUpdate(state, AppStates);
+    }
   }
 
   if (!statusWindow || statusWindow.isDestroyed()) createStatusWindow();
@@ -256,8 +266,9 @@ function createDashboardWindow() {
     icon: platformHelper.getIconPath(__dirname),
     autoHideMenuBar: true,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'src', 'preload.js'),
     }
   });
 
@@ -274,6 +285,56 @@ function createDashboardWindow() {
   dashboardWindow.on('closed', () => {
     dashboardWindow = null;
   });
+}
+
+function createNotificationWindow() {
+  if (notificationWindow && !notificationWindow.isDestroyed()) return;
+
+  const { screen } = require('electron');
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width, height } = primaryDisplay.workAreaSize;
+
+  notificationWindow = new BrowserWindow({
+    width: 400,
+    height: height,
+    x: width - 400,
+    y: 0,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    show: false,
+    skipTaskbar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'src', 'preload.js'),
+    }
+  });
+
+  notificationWindow.loadFile(path.join(__dirname, 'renderer', 'notification_panel.html'));
+
+  notificationWindow.on('closed', () => {
+    notificationWindow = null;
+  });
+}
+
+function toggleAssistantSidePanel() {
+  if (!notificationWindow || notificationWindow.isDestroyed()) {
+    createNotificationWindow();
+    setTimeout(() => {
+      if (notificationWindow && !notificationWindow.isDestroyed()) {
+        notificationWindow.show();
+        notificationWindow.focus();
+      }
+    }, 200);
+  } else {
+    if (notificationWindow.isVisible()) {
+      notificationWindow.hide();
+    } else {
+      notificationWindow.show();
+      notificationWindow.focus();
+    }
+  }
 }
 
 function notifyDashboard(event, data) {
@@ -293,62 +354,67 @@ if (!gotTheLock) {
 }
 
 /**
- * Captures currently selected text by simulating Ctrl+C
+ * Runs a platform-specific selection script (copy, cut, undo, paste)
+ * with a timeout to prevent hangs.
  */
-async function captureSelectedText() {
-  const oldClipboard = clipboard.readText();
-  clipboard.clear();
+async function runSelectionScript(scriptContent, tempPrefix, settleMs = 100) {
+  const scriptPath = path.join(require('os').tmpdir(), `${tempPrefix}_${Date.now()}.${platformHelper.getScriptExtension()}`);
+  fs.writeFileSync(scriptPath, scriptContent);
+  const cmd = platformHelper.getExecutionCommand(scriptPath);
 
-  // 1. Simulate Copy command to get selection
-  const copyScriptContent = platformHelper.getCopyScript();
-  const copyScriptPath = path.join(require('os').tmpdir(), `leelacopy_${Date.now()}.${platformHelper.getScriptExtension()}`);
-  fs.writeFileSync(copyScriptPath, copyScriptContent);
-
-  const selectionResult = await new Promise((resolve) => {
-    const cmd = platformHelper.getExecutionCommand(copyScriptPath);
-    exec(cmd, { windowsHide: true }, async () => {
-      try { fs.unlinkSync(copyScriptPath); } catch (_) { }
-      await new Promise(r => setTimeout(r, 100)); // Optimized to 100ms
-      const selection = clipboard.readText();
-      resolve(selection);
-    });
-  });
-
-  if (!selectionResult || selectionResult.trim().length === 0) {
-    return { selection: '', oldClipboard, isEditable: false };
+  try {
+    await Promise.race([
+      new Promise((resolve) => {
+        exec(cmd, { windowsHide: true }, () => resolve());
+      }),
+      new Promise((resolve) => {
+        setTimeout(() => {
+          console.warn('[LeelaV1] Selection script timeout for ' + tempPrefix);
+          resolve();
+        }, 500);
+      })
+    ]);
+  } finally {
+    try { fs.unlinkSync(scriptPath); } catch (_) { }
   }
 
-  // 2. Heuristic: Try to "Cut" (Ctrl+X) and then "Undo" (Ctrl+Z)
-  clipboard.clear();
-  const cutScriptContent = platformHelper.getCutScript();
-  const cutScriptPath = path.join(require('os').tmpdir(), `leelacut_${Date.now()}.${platformHelper.getScriptExtension()}`);
-  fs.writeFileSync(cutScriptPath, cutScriptContent);
+  if (settleMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, settleMs));
+  }
+}
 
-  const isEditable = await new Promise((resolve) => {
-    const cmd = platformHelper.getExecutionCommand(cutScriptPath);
-    exec(cmd, { windowsHide: true }, async () => {
-      try { fs.unlinkSync(cutScriptPath); } catch (_) { }
-      await new Promise(r => setTimeout(r, 100)); // Optimized to 100ms
-      const cutContent = clipboard.readText();
-      const editable = cutContent !== "";
+/**
+ * Captures currently selected text by simulating Ctrl+C.
+ * The isEditable Cut heuristic has been removed because it
+ * conflicts with physically held Ctrl+Space during Hold-to-Talk.
+ */
+async function captureSelectedText(engine) {
+  engine.setCapturing(true);
+  console.log('[LeelaV1]', { event: 'selection_capture_started', event_source: 'physical' });
 
-      if (editable) {
-        // Use UNDO to restore text AND selection highlight
-        const undoScriptContent = platformHelper.getUndoScript();
-        const undoScriptPath = path.join(require('os').tmpdir(), `leelaundo_${Date.now()}.${platformHelper.getScriptExtension()}`);
-        fs.writeFileSync(undoScriptPath, undoScriptContent);
-        const undoCmd = platformHelper.getExecutionCommand(undoScriptPath);
-        exec(undoCmd, { windowsHide: true }, () => {
-          try { fs.unlinkSync(undoScriptPath); } catch (_) { }
-          resolve(true);
-        });
-      } else {
-        resolve(false);
-      }
-    });
-  });
+  try {
+    const oldClipboard = clipboard.readText();
+    clipboard.clear();
 
-  return { selection: selectionResult, oldClipboard, isEditable };
+    engine.setSyntheticCapture(true);
+    await runSelectionScript(platformHelper.getCopyScript(), 'leelacopy', 100);
+    engine.setSyntheticCapture(false);
+    
+    const selectionResult = clipboard.readText();
+
+    if (!selectionResult || selectionResult.trim().length === 0) {
+      return { selection: '', oldClipboard, isEditable: false };
+    }
+
+    // If we successfully copied text, assume editable. The old Cut heuristic
+    // was removed because simulating Ctrl+X while user holds Ctrl+Space
+    // causes OS-level key interference, breaking Hold-to-Talk.
+    return { selection: selectionResult, oldClipboard, isEditable: true };
+  } finally {
+    engine.setSyntheticCapture(false);
+    engine.setCapturing(false);
+    engine.onCaptureCompleted();
+  }
 }
 
 /**
@@ -366,90 +432,38 @@ async function polishText(text, instruction = null, overrideLang = null, overrid
 
   let systemPrompt = "";
   if (instruction) {
-    // COMMAND MODE PROMPT: Leela’s Senior Writing Executor
-    systemPrompt = `You are Leela’s Senior Writing Executor.
-Your role is to intelligently transform the "input_text" based strictly on the "user_instruction".
+    // COMMAND MODE PROMPT: Strict Text Transformation Engine
+    systemPrompt = `You are a strict text transformation engine.
+Your sole job is to transform "INPUT_TEXT" according to "USER_INSTRUCTION".
 
-STRICT PHILOSOPHY:
-- Clear, intelligent, non-robotic writing.
-- Background processor: NEVER reveal reasoning, thoughts, or commentary.
-- Return ONLY the final usable text.
-
-------------------------------------------------
-STEP 1 — INTENT CLASSIFICATION
-Infer intent naturally. If unclear → default to POLISH.
-Possible intents: POLISH, MAKE PROFESSIONAL, SUMMARIZE, SHORTEN, EXPAND, SIMPLIFY, TRANSLATE, TONE CHANGE, FORMAT CHANGE.
-
-------------------------------------------------
-STEP 2 — TRANSFORMATION RULES
-- POLISH: Improve grammar/clarity, remove repetition, preserve meaning, keep tone natural.
-- MAKE PROFESSIONAL: Remove slang, increase clarity, structure, maintain respectful tone.
-- SUMMARIZE: Reduce length by >=50%, preserve core meaning, make concise and structured.
-- SHORTEN: Reduce length by ~40–60%, keep original message intact.
-- EXPAND: Add clarity/structure, elaborate logically, no unrelated ideas.
-- SIMPLIFY: Plain language, remove jargon, accessible.
-- TRANSLATE: Absolute accuracy in ${targetLangName}, preserve tone, no explanations.
-- TONE CHANGE: Adjust as requested, maintain original meaning.
-- FORMAT CHANGE: Convert format (bullet points, paragraph, etc.) strictly.
-
-------------------------------------------------
-STEP 3 — STYLE ALIGNMENT
-- Preserve user’s voice.
-- Avoid robotic phrasing or over-formality (unless requested).
-- Avoid unnecessary verbosity.
-
-------------------------------------------------
-STEP 4 — STRUCTURAL ENFORCEMENT
-If structural change is required, enforce it strictly and fully.
-
-------------------------------------------------
-STEP 5 — SILENT QUALITY CHECK (INTERNAL)
-Verify: Meaning preserved, instruction executed, NEVER output your thoughts.
-
-------------------------------------------------
-FINAL OUTPUT RULE
-Return ONLY the final transformed text. 
-- No labels (e.g., "Result:", "Transformed:").
-- No commentary or preamble (e.g., "Here is the text:", "Okay, let's...").
-- No reasoning, internal analysis, thoughts, or evaluation tags.
-- No <internal_analysis>, <thought>, or <final_result> tags.
-
-Failure to follow the "Output Only" rule is a system error.`;
+STRICT RULES:
+1. Return ONLY the final transformed text.
+2. Absolutely NO reasoning, explanations, or internal thinking.
+3. Absolutely NO <think> or <thought> tags.
+4. Absolutely NO quotes around the output.
+5. NO metadata, scores, or comments.
+6. The output must be clean, copy-ready text.`;
   } else {
     // STANDARD POLISH PROMPT
     systemPrompt = isEnglish
-      ? `You are Leela's "Invisible Editor." 
-Your MISSION: Transform spoken transcriptions into world-class written English.
+      ? `You are a strict text transformation engine.
+Transform the provided transcription into professional, high-quality English.
 
-STRICT INSTRUCTIONS:
-- You are an invisible editor. NEVER reveal your reasoning, thoughts, or analysis.
-- Do NOT output <thought>, analysis, or explanations.
-- Do NOT show evaluation scores or describe improvements.
-- Return ONLY the final, polished text. No conversational preamble.
+STRICT RULES:
+1. Return ONLY the final polished text.
+2. Absolutely NO reasoning, explanations, or internal thinking.
+3. Absolutely NO <think> or <thought> tags.
+4. Absolutely NO quotes around the output.
+5. NO metadata, scores, or comments.`
+      : `You are a strict text transformation engine.
+Translate/Transform the provided transcription into high-quality ${targetLangName}.
 
-WORKFLOW (INTERNAL ONLY):
-1. [POLISH]: Convert audio to professional English. Remove fillers/stumbles.
-2. [SELF-EVALUATE]: Score internally (1-10) on Meaning, Grammar, and Tone.
-3. [IMPROVE]: If scores < 8, perform a second pass.
-
-OUTPUT FORMAT:
-Return ONLY the final, polished text. No conversational preamble. No thoughts. No tags.`
-      : `You are Leela's "Invisible Editor."
-Your MISSION: Translate transcriptions into professional, high-quality ${targetLangName}.
-
-STRICT INSTRUCTIONS:
-- You are an invisible editor. NEVER reveal your reasoning, thoughts, or analysis.
-- Do NOT output <thought>, analysis, or explanations.
-- Do NOT show evaluation scores or describe improvements.
-- Return ONLY the final, polished text. No conversational preamble.
-
-WORKFLOW (INTERNAL ONLY):
-1. [TRANSLATE]: Provide a natural translation.
-2. [SELF-EVALUATE]: Score internally (1-10) on Accuracy, Fluency, and Tone.
-3. [IMPROVE]: If scores < 8, refine.
-
-OUTPUT FORMAT:
-Return ONLY the final, polished text. No conversational preamble. No thoughts. No tags.`;
+STRICT RULES:
+1. Return ONLY the final result text.
+2. Absolutely NO reasoning, explanations, or internal thinking.
+3. Absolutely NO <think> or <thought> tags.
+4. Absolutely NO quotes around the output.
+5. NO metadata, scores, or comments.`;
   }
 
   const userPrompt = instruction
@@ -469,10 +483,12 @@ Return ONLY the final, polished text. No conversational preamble. No thoughts. N
   });
 
   const content = response.data?.choices?.[0]?.message?.content || text;
+  console.log('DIAGNOSTIC - RAW_MODEL_OUTPUT:', JSON.stringify(content));
 
   // EXTRACTION & SANITIZATION
-  // We no longer use tags. We just clean up any potential markdown or labels if the AI leaks them.
+  // Strictly remove all thinking, reasoning, and analysis tags/blocks.
   let cleaned = content
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
     .replace(/<internal_analysis>[\s\S]*?<\/internal_analysis>/gi, '')
     .replace(/<thought>[\s\S]*?<\/thought>/gi, '')
     .replace(/<analysis>[\s\S]*?<\/analysis>/gi, '')
@@ -480,6 +496,8 @@ Return ONLY the final, polished text. No conversational preamble. No thoughts. N
     .replace(/<final_output>|<\/final_output>/gi, '')
     .replace(/<internal_feedback>[\s\S]*?<\/internal_feedback>/gi, '')
     .trim();
+  
+  console.log('DIAGNOSTIC - AFTER_RESPONSE_PROCESSOR:', JSON.stringify(cleaned));
 
   // Safety Cleanup: Prune potential preamble or AI chatter
   const removalPatterns = [
@@ -494,6 +512,7 @@ Return ONLY the final, polished text. No conversational preamble. No thoughts. N
 
   // Final trim and character cleanup
   cleaned = cleaned.replace(/^[:\s.-]+/, '').trim();
+  console.log('DIAGNOSTIC - AFTER_FORMATTER:', JSON.stringify(cleaned));
 
   return {
     text: cleaned,
@@ -542,111 +561,22 @@ app.whenReady().then(() => {
 
   createStatusWindow();
 
+  createNotificationWindow(); // Side panel for chat/actions
+
   // Handle command line flags
   if (process.argv.includes('--dashboard')) {
     createDashboardWindow();
   }
-  // Dual-Mode Hotkey Handling Logic
-  async function handleHotkeyTrigger() {
-    if (isProcessingHotkey) return;
-    isProcessingHotkey = true;
-
-    console.log('[LeelaV1] Hotkey Triggered: Control+Space');
-
-    try {
-      // RESET STATE
-      pendingSelection = null;
-      oldClipboardBeforeSelection = null;
-
-      // START CAPTURE (Async)
-      capturePromise = captureSelectedText();
-      const result = await capturePromise;
-      const { selection, oldClipboard, isEditable } = result;
-
-      if (selection && selection.trim().length > 0) {
-        if (!isEditable) {
-          console.log('[LeelaV1] Text is NOT editable. Aborting trigger.');
-          clipboard.writeText(oldClipboard);
-          capturePromise = null;
-          isProcessingHotkey = false;
-          return;
-        }
-
-        console.log('[LeelaV1] Selection detected and editable. Preparing Command/Hold recording.');
-        pendingSelection = selection;
-        oldClipboardBeforeSelection = oldClipboard;
-
-        // START RECORDING UI (Wait for keydown to ensure it's still held if needed)
-        if (dashboardWindow && !dashboardWindow.isDestroyed()) {
-          dashboardWindow.webContents.send('play-command-sound'); // Immediate feedback
-          dashboardWindow.webContents.send('hotkey-toggle');
-        }
-      } else {
-        console.log('[LeelaV1] No selection. Default Dictation Mode.');
-        if (dashboardWindow && !dashboardWindow.isDestroyed()) {
-          dashboardWindow.webContents.send('hotkey-toggle');
-        }
-      }
-      isProcessingHotkey = false;
-    } catch (err) {
-      console.error('[LeelaV1] Trigger error:', err);
-      updateState(AppStates.ERROR, 'Trigger Failed');
-      capturePromise = null;
-      isProcessingHotkey = false;
-    }
-  }
-
-  async function handleHotkeyRelease(duration) {
-    console.log(`[LeelaV1] Hotkey Released (Duration: ${duration}ms)`);
-
-    // WAIT for capture to finish if it's still running
-    if (capturePromise) {
-      console.log('[LeelaV1] Waiting for selection capture to finalize...');
-      await capturePromise;
-      capturePromise = null;
-    }
-    if (pendingSelection) {
-      if (duration < 300) {
-        console.log(`[LeelaV1] Short tap with selection (${duration}ms). DISCARDING recording and triggering INSTANT POLISH.`);
-
-        // Stop the recording that was started on keydown (if active)
-        if (isRecordingActive && dashboardWindow && !dashboardWindow.isDestroyed()) {
-          // We'll set a flag so process-recording knows to discard this one
-          recordingType = 'TAP_DISCARD';
-          dashboardWindow.webContents.send('hotkey-toggle');
-        }
-
-        // Run existing Instant Polish logic
-        runInstantPolish(pendingSelection, oldClipboardBeforeSelection);
-        pendingSelection = null;
-      } else {
-        console.log(`[LeelaV1] Hold Command detected (${duration}ms). Finalizing voice command.`);
-        recordingType = 'HOLD';
-        if (isRecordingActive && dashboardWindow && !dashboardWindow.isDestroyed()) {
-          dashboardWindow.webContents.send('hotkey-toggle');
-        }
-      }
-    } else {
-      // Normal dictation logic
-      if (duration >= 500) {
-        console.log(`[LeelaV1] Dictation Hold finished (${duration}ms).`);
-        recordingType = 'HOLD';
-        if (isRecordingActive && dashboardWindow && !dashboardWindow.isDestroyed()) {
-          dashboardWindow.webContents.send('hotkey-toggle');
-        }
-      } else {
-        console.log(`[LeelaV1] Dictation Click detected.`);
-        recordingType = 'CLICK';
-      }
-    }
-  }
-
   // Helper for instant polish (tap behavior)
   async function runInstantPolish(text, oldClipboard) {
     updateState(AppStates.PROCESSING);
     try {
       const polishResult = await polishText(text);
-      const polished = polishResult.text;
+      
+      // SURGICAL FIX: Apply shared sanitizer as a final safety layer
+      const { sanitizeAIOutput } = require('./src/utils/sanitize_output');
+      const polished = sanitizeAIOutput(polishResult.text);
+      
       const qualityScores = polishResult.qualityScores;
 
       if (settingsManager.getSettings().historyEnabled) {
@@ -680,46 +610,108 @@ app.whenReady().then(() => {
     }
   }
 
-  // Register uIOhook listeners
-  uIOhook.on('keydown', (e) => {
-    const isCtrl = e.keycode === 29 || e.keycode === 3613;
-    const isSpace = e.keycode === 57;
+  // ── Initialize HotkeyEngine ──────────────────────────────────
+  hotkeyEngine = new HotkeyEngine({
+    uIOhook,
+    getWindows: () => ({ dashboard: dashboardWindow, status: statusWindow, notification: notificationWindow }),
+  });
 
-    if (isCtrl) isCtrlPressed = true;
-    if (isSpace) isSpacePressed = true;
-
-    if (isCtrlPressed && isSpacePressed) {
-      const now = Date.now();
-      if (pressStartTime === 0 && now - lastHotkeyTime > HOTKEY_DEBOUNCE) {
-        lastHotkeyTime = now;
-        pressStartTime = now;
-        handleHotkeyTrigger();
-      }
+  hotkeyEngine.on('toggle-recorder', () => {
+    if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+      console.log(`[${new Date().toISOString()}] [IPC] Sending 'hotkey-toggle' to dashboardWindow`);
+      dashboardWindow.webContents.send('hotkey-toggle');
     }
   });
 
-  uIOhook.on('keyup', (e) => {
-    const isCtrl = e.keycode === 29 || e.keycode === 3613;
-    const isSpace = e.keycode === 57;
-
-    if (isCtrl) isCtrlPressed = false;
-    if (isSpace) {
-      isSpacePressed = false;
-      if (pressStartTime !== 0) {
-        const duration = Date.now() - pressStartTime;
-        pressStartTime = 0;
-        handleHotkeyRelease(duration);
-      }
+  hotkeyEngine.on('request-selection-capture', async ({ sessionId }) => {
+    try {
+      const result = await captureSelectedText(hotkeyEngine);
+      console.log(`[${new Date().toISOString()}] [CAPTURE] captureSelectedText returned:`, JSON.stringify(result));
+      hotkeyEngine.onSelectionCaptured(result);
+    } catch (err) {
+      console.error(`[${new Date().toISOString()}] [LeelaV1] Selection capture error:`, err);
+      hotkeyEngine.onSelectionCaptured({ selection: '', oldClipboard: '', isEditable: false });
     }
+  });
+
+  hotkeyEngine.on('instant-polish', ({ text, oldClipboard }) => {
+    runInstantPolish(text, oldClipboard);
+  });
+
+  hotkeyEngine.on('toggle-assistant-panel', () => {
+    toggleAssistantSidePanel();
+  });
+
+  hotkeyEngine.on('chat-hotkey', () => {
+    if (notificationWindow && !notificationWindow.isDestroyed()) {
+      notificationWindow.webContents.send('chat-hotkey-toggle');
+    }
+  });
+
+  hotkeyEngine.on('play-command-sound', () => {
+    if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+      dashboardWindow.webContents.send('play-command-sound');
+    }
+  });
+
+  hotkeyEngine.on('state-error', ({ message }) => {
+    updateState(AppStates.ERROR, message);
+  });
+
+  // ── Register IPC Handlers ────────────────────────────────────
+  registerIpcHandlers({
+    app,
+    clipboard,
+    settingsManager,
+    secretManager,
+    activityLogger,
+    optimizer,
+    platformHelper,
+    cleanup,
+    getWindows: () => ({ dashboard: dashboardWindow, status: statusWindow, notification: notificationWindow }),
+    getAppState: () => ({
+      logs,
+      get recordingType() { return hotkeyEngine.recordingType; },
+      set recordingType(v) { hotkeyEngine.recordingType = v; },
+      get pendingSelection() { return hotkeyEngine.pendingSelection; },
+      set pendingSelection(v) { hotkeyEngine.pendingSelection = v; },
+      get oldClipboardBeforeSelection() { return hotkeyEngine.oldClipboardBeforeSelection; },
+      set oldClipboardBeforeSelection(v) { hotkeyEngine.oldClipboardBeforeSelection = v; },
+      get isRecordingActive() { return hotkeyEngine.isRecordingActive; },
+      set isRecordingActive(v) { hotkeyEngine.isRecordingActive = v; },
+      get activeHotkeySessionId() { return hotkeyEngine.activeSessionId; },
+      set activeHotkeySessionId(v) { /* managed by engine */ },
+      get hotkeyStartTimestamp() { return hotkeyEngine.startTimestamp; },
+      set hotkeyStartTimestamp(v) { /* managed by engine */ },
+      get timedOutDeferredStopSessionId() { return hotkeyEngine.timedOutDeferredStopSessionId; },
+      set timedOutDeferredStopSessionId(v) { /* managed by engine */ },
+      get hotkeyFsmState() { return hotkeyEngine.fsmState; },
+    }),
+    updateState,
+    polishText,
+    notifyDashboard,
+    syncStartupSetting,
+    createDashboardWindow,
+    AppStates,
+    hotkeyEngine
   });
 
   uIOhook.start();
+  hotkeyEngine.start();
 
   // Sync startup setting on launch
   syncStartupSetting();
 
   // Start background cleanup (silent)
   cleanup.initCleanup(__dirname);
+
+  // Start Local Demo Server
+  try {
+    require("./server/local_demo_server");
+    console.log('[LeelaV1] Local Demo Server started successfully');
+  } catch (err) {
+    console.error('[LeelaV1] Failed to start Local Demo Server:', err);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createDashboardWindow();
@@ -739,480 +731,3 @@ app.on('will-quit', () => {
     console.error('[LeelaV1] Error unregistering global shortcuts:', e);
   }
 });
-
-// Paste text into the currently focused application by writing to clipboard and sending Ctrl+V
-ipcMain.handle('paste-text', async (event, text) => {
-  try {
-    if (!text) return { ok: false, error: 'empty' };
-    console.log('[LeelaV1] Pasting transcript:', text.substring(0, 50) + '...');
-    clipboard.writeText(String(text));
-
-    // Platform specific paste
-    const scriptContent = platformHelper.getPasteScript();
-    const scriptPath = path.join(require('os').tmpdir(), `leelapaste_${Date.now()}.${platformHelper.getScriptExtension()}`);
-    fs.writeFileSync(scriptPath, scriptContent);
-
-    const cmd = platformHelper.getExecutionCommand(scriptPath);
-    exec(cmd, { windowsHide: true }, (err) => {
-      try { fs.unlinkSync(scriptPath); } catch (_) { }
-    });
-
-    return { ok: true };
-  } catch (e) {
-    console.error('[LeelaV1] paste-text handler error:', e);
-    return { ok: false, error: String(e) };
-  }
-});
-
-// Receive renderer log messages and persist to file for debugging
-ipcMain.on('renderer-log', (event, level, msg) => {
-  try {
-    const logLine = `${new Date().toISOString()} [${level}] ${String(msg)}\n`;
-    fs.appendFileSync(path.join(__dirname, 'renderer.log'), logLine);
-  } catch (e) {
-    console.error('[LeelaV1] Failed to write renderer.log', e);
-  }
-});
-
-/**
- * Convert .webm to .wav (16kHz, mono) and transcribe via Sarvam synchronous API
- */
-const util = require('util');
-const execAsync = util.promisify(exec);
-
-/**
- * Convert .webm to .wav (16kHz, mono) and transcribe via Sarvam synchronous API.
- * Handles long audio by chunking into 25s segments using FFmpeg.
- */
-async function transcribeSynchronous(webmPath, apiKey) {
-  const baseName = path.basename(webmPath, '.webm');
-  const tempDir = path.dirname(webmPath);
-  const wavPath = path.join(tempDir, `${baseName}_full.wav`);
-  const chunkPattern = path.join(tempDir, `${baseName}_chunk_%03d.wav`);
-
-  try {
-    console.log('[RECORDER] Converting to WAV asynchronously:', webmPath);
-    // Convert to 16k, mono, 16bit WAV without blocking the event loop
-    const convCmd = `"${ffmpeg}" -i "${webmPath}" -ar 16000 -ac 1 -c:a pcm_s16le -y "${wavPath}"`;
-    await execAsync(convCmd, { maxBuffer: 10 * 1024 * 1024 }); // 10MB buffer to prevent hang
-
-    console.log('[RECORDER] Chunking audio if needed...');
-    // Split into 25s chunks without blocking
-    const splitCmd = `"${ffmpeg}" -i "${wavPath}" -f segment -segment_time 25 -c copy "${chunkPattern}"`;
-    await execAsync(splitCmd, { maxBuffer: 10 * 1024 * 1024 });
-
-    // Identify chunk files
-    const files = fs.readdirSync(tempDir);
-    const chunkFiles = files
-      .filter(f => f.startsWith(`${baseName}_chunk_`) && f.endsWith('.wav'))
-      .sort()
-      .map(f => path.join(tempDir, f));
-
-    console.log(`[LeelaV1] Processing ${chunkFiles.length} chunks...`);
-    const transcripts = [];
-
-    for (const chunk of chunkFiles) {
-      const formData = new FormData();
-      formData.append('file', fs.createReadStream(chunk), {
-        filename: 'audio.wav',
-        contentType: 'audio/wav'
-      });
-      formData.append('model', 'saaras:v3');
-      formData.append('mode', 'translate');
-      const settings = settingsManager.getSettings();
-      formData.append('targetLanguage', settings.targetLanguage || 'en');
-
-      try {
-        const response = await axios.post('https://api.sarvam.ai/speech-to-text', formData, {
-          headers: {
-            ...formData.getHeaders(),
-            'api-subscription-key': apiKey
-          },
-          timeout: 45000 // Increased timeout for individual chunks
-        });
-
-        if (response.data && response.data.transcript) {
-          transcripts.push(response.data.transcript.trim());
-        }
-      } catch (err) {
-        console.error(`[LeelaV1] Chunk transcription segment failed:`, err.message);
-      } finally {
-        // Cleanup chunk file immediately
-        try { fs.unlinkSync(chunk); } catch (_) { }
-      }
-    }
-
-    if (transcripts.length === 0) {
-      return { ok: false, error: 'transcription_failed' };
-    }
-
-    const finalTranscript = transcripts.join(' ');
-    console.log('[LeelaV1] Combined Transcript:', finalTranscript.substring(0, 100) + '...');
-    return { ok: true, text: finalTranscript };
-
-  } catch (err) {
-    console.error('[LeelaV1] Synchronous transcription error:', err.message);
-    return { ok: false, error: err.message };
-  } finally {
-    // Cleanup temporary full wav
-    try { if (fs.existsSync(wavPath)) fs.unlinkSync(wavPath); } catch (_) { }
-  }
-}
-
-// Process a saved recording using Sarvam synchronous API and paste result
-ipcMain.handle('process-recording', async (event, filePath) => {
-  updateState(AppStates.PROCESSING);
-  try {
-    if (!filePath || !fs.existsSync(filePath)) {
-      updateState(AppStates.ERROR, 'File Missing');
-      return { ok: false, error: 'file_missing' };
-    }
-
-    // Load API key from secret manager
-    const apiKey = secretManager.getApiKey();
-    if (!apiKey) {
-      updateState(AppStates.ERROR, 'API Key Missing');
-      return { ok: false, error: 'no_api_key' };
-    }
-
-    console.log('[LeelaV1] Starting fast-path transcription for:', filePath);
-    updateState(AppStates.PROCESSING);
-
-    // NEW: Handle discarded taps (Quick Polish already handled the text)
-    if (recordingType === 'TAP_DISCARD') {
-      console.log('[LeelaV1] Recording discarded (Quick Polish mode).');
-      recordingType = null;
-      return { ok: true, text: '' };
-    }
-
-    const result = await transcribeSynchronous(filePath, apiKey);
-
-    if (result.ok && result.text) {
-      const transcript = result.text.trim();
-      console.log('[LeelaV1] Transcript received:', transcript);
-
-      let finalResult = transcript;
-      let overrideLang = null;
-      let overrideLangName = null;
-
-      // NEW: HOLD-TO-COMMAND LOGIC
-      const isContextCommand = pendingSelection !== null;
-      const contextText = pendingSelection;
-      const contextClipboard = oldClipboardBeforeSelection;
-
-      // Clear pending state immediately to prevent re-runs
-      pendingSelection = null;
-      oldClipboardBeforeSelection = null;
-
-      // VOICE DIRECTIVE PARSING (e.g., "Translate to Hindi: Hello" OR "Hello, translate to Hindi")
-      const languages = [
-        { code: 'hi', name: 'Hindi' },
-        { code: 'fr', name: 'French' },
-        { code: 'es', name: 'Spanish' },
-        { code: 'de', name: 'German' },
-        { code: 'it', name: 'Italian' },
-        { code: 'ja', name: 'Japanese' },
-        { code: 'ko', name: 'Korean' },
-        { code: 'zh', name: 'Chinese' },
-        { code: 'bn', name: 'Bengali' },
-        { code: 'ta', name: 'Tamil' },
-        { code: 'te', name: 'Telugu' },
-        { code: 'gu', name: 'Gujarati' },
-        { code: 'kn', name: 'Kannada' },
-        { code: 'ml', name: 'Malayalam' },
-        { code: 'mr', name: 'Marathi' },
-        { code: 'pa', name: 'Punjabi' },
-        { code: 'or', name: 'Odia' },
-        { code: 'en', name: 'English' }
-      ];
-
-      let cleanTranscript = transcript;
-      for (const lang of languages) {
-        // 1. Check for command at the start
-        const startRegex = new RegExp(`^(?:translate\\s+(?:to|in)\\s+|in\\s+)${lang.name}[,:\\s-]+(.*)`, 'i');
-        const startMatch = transcript.match(startRegex);
-        if (startMatch) {
-          overrideLang = lang.code;
-          overrideLangName = lang.name;
-          cleanTranscript = startMatch[1].trim();
-          console.log(`[LeelaV1] Voice Directive Detected (Start): ${lang.name}. Clean text: ${cleanTranscript}`);
-          break;
-        }
-
-        // 2. Check for command at the end
-        const endRegex = new RegExp(`^(.*?)[,:\\s-]+(?:translate\\s+(?:to|in)\\s+|in\\s+)${lang.name}[.]?$`, 'i');
-        const endMatch = transcript.match(endRegex);
-        if (endMatch) {
-          overrideLang = lang.code;
-          overrideLangName = lang.name;
-          cleanTranscript = endMatch[1].trim();
-          console.log(`[LeelaV1] Voice Directive Detected (End): ${lang.name}. Clean text: ${cleanTranscript}`);
-          break;
-        }
-      }
-
-      try {
-        console.log('[LeelaV1] Processing transcription...');
-        const polishResult = isContextCommand
-          ? await polishText(contextText, transcript, overrideLang, overrideLangName)
-          : await polishText(cleanTranscript, null, overrideLang, overrideLangName);
-
-        finalResult = polishResult.text;
-        const qualityScores = polishResult.qualityScores;
-        console.log('[LeelaV1] Processing complete.');
-
-        // Quality Guard: Check for low-quality results
-        let finalState = AppStates.SUCCESS_PASTE;
-        let finalMessage = null;
-
-        if (qualityScores) {
-          const minScore = Math.min(qualityScores.meaning, qualityScores.grammar, qualityScores.tone);
-          if (minScore < 7) {
-            finalState = AppStates.WARNING;
-            finalMessage = 'Low Quality Detected';
-            console.warn('[LeelaV1] Low-quality result detected:', qualityScores);
-          }
-        }
-
-        // Paste using the platform-specific method
-        clipboard.writeText(String(finalResult));
-        const scriptContent = platformHelper.getPasteScript();
-        const scriptPath = path.join(require('os').tmpdir(), `leelapaste_fast_${Date.now()}.${platformHelper.getScriptExtension()}`);
-        fs.writeFileSync(scriptPath, scriptContent);
-
-        const cmd = platformHelper.getExecutionCommand(scriptPath);
-        exec(cmd, { windowsHide: true }, (err) => {
-          try { fs.unlinkSync(scriptPath); } catch (_) { }
-          if (err) {
-            console.error('[LeelaV1] Failed to paste:', err);
-            updateState(AppStates.ERROR, 'Paste Failed');
-          } else {
-            updateState(finalState, finalMessage);
-            // Log activity
-            if (settingsManager.getSettings().historyEnabled) {
-              activityLogger.logAction({
-                type: isContextCommand ? 'Context Command' : 'Smart Polish',
-                input: isContextCommand ? `Context: ${contextText} | Cmd: ${transcript}` : transcript,
-                output: finalResult,
-                status: 'SUCCESS',
-                qualityScores
-              });
-              notifyDashboard('history-updated');
-            }
-
-            // Restore clipboard if we were in command mode
-            if (isContextCommand && contextClipboard) {
-              setTimeout(() => clipboard.writeText(contextClipboard), 500);
-            }
-          }
-        });
-      } catch (err) {
-        console.warn('[LeelaV1] Auto-polish failed, using raw transcript:', err.message);
-        // Paste raw transcript
-        clipboard.writeText(String(finalResult));
-        const scriptContent = platformHelper.getPasteScript();
-        const scriptPath = path.join(require('os').tmpdir(), `leelapaste_fast_${Date.now()}.${platformHelper.getScriptExtension()}`);
-        fs.writeFileSync(scriptPath, scriptContent);
-
-        const cmd = platformHelper.getExecutionCommand(scriptPath);
-        exec(cmd, { windowsHide: true }, (err) => {
-          try { fs.unlinkSync(scriptPath); } catch (_) { }
-          if (err) {
-            console.error('[LeelaV1] Failed to paste:', err);
-            updateState(AppStates.ERROR, 'Paste Failed');
-          } else {
-            updateState(AppStates.SUCCESS_PASTE);
-            // Log activity
-            if (settingsManager.getSettings().historyEnabled) {
-              activityLogger.logAction({
-                type: 'Voice Dictation',
-                input: transcript,
-                output: finalResult,
-                status: 'SUCCESS'
-              });
-              notifyDashboard('history-updated');
-            }
-          }
-        });
-      }
-      return { ok: true, text: transcript };
-    }
-
-    updateState(AppStates.ERROR, 'No Transcript');
-    return { ok: false, error: result.error || 'no_transcript' };
-  } catch (e) {
-    updateState(AppStates.ERROR, 'System Error');
-    console.error('[API] process-recording error:', e);
-    return { ok: false, error: String(e) };
-  } finally {
-    // Immediate and explicit cleanup of the input webm file
-    try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch (_) { }
-    cleanup.runCleanup(__dirname);
-  }
-});
-
-ipcMain.on('mic-data', (event, value) => {
-  if (statusWindow && !statusWindow.isDestroyed()) {
-    statusWindow.webContents.send('mic-data', value);
-  }
-});
-
-ipcMain.on('overlay-log', (event, msg) => {
-  console.log(`[OVERLAY DEBUG] ${msg}`);
-});
-
-// IPC Handlers for Dashboard & Settings
-ipcMain.handle('get-history', () => {
-  return activityLogger.getHistory();
-});
-
-ipcMain.handle('get-temp-path', () => {
-  return app.getPath('temp');
-});
-
-ipcMain.handle('get-settings', () => {
-  return settingsManager.getSettings();
-});
-
-ipcMain.on('update-setting', (event, newSetting) => {
-  const oldSettings = settingsManager.getSettings();
-  settingsManager.updateSettings(newSetting);
-
-  // If startWithWindows was changed, sync it
-  if (newSetting.hasOwnProperty('startWithWindows') && newSetting.startWithWindows !== oldSettings.startWithWindows) {
-    syncStartupSetting();
-  }
-});
-
-ipcMain.on('open-dashboard', () => {
-  createDashboardWindow();
-});
-
-// Added to allow renderer to update global state
-ipcMain.on('update-app-state', (event, state) => {
-  const newState = AppStates[state] || state;
-  updateState(newState);
-
-  // Sync internal recording state for hotkey logic
-  if (newState === AppStates.LISTENING) {
-    isRecordingActive = true;
-  } else if (newState === AppStates.IDLE || newState === AppStates.PROCESSING || newState === AppStates.ERROR) {
-    isRecordingActive = false;
-  }
-});
-
-// Sarvam API Key Management IPC
-ipcMain.handle('test-sarvam-key', async (event, key) => {
-  try {
-    const testKey = key || secretManager.getApiKey();
-    if (!testKey) return { ok: false, error: 'No API key provided or stored.' };
-
-    // Lightweight check: use Chat API
-    const response = await axios.post('https://api.sarvam.ai/v1/chat/completions', {
-      model: 'sarvam-m',
-      messages: [{ role: 'user', content: 'hello' }],
-      max_tokens: 1
-    }, {
-      headers: { 'api-subscription-key': testKey },
-      timeout: 5000
-    });
-
-    return { ok: true };
-  } catch (err) {
-    console.error('[LeelaV1] API Key test failed:', err.response?.data || err.message);
-    return { ok: false, error: err.response?.data?.message || err.message };
-  }
-});
-
-ipcMain.handle('save-sarvam-key', async (event, key) => {
-  const success = secretManager.setApiKey(key);
-  if (success) {
-    // Notify dashboard to refresh its view
-    if (dashboardWindow && !dashboardWindow.isDestroyed()) {
-      dashboardWindow.webContents.send('key-saved');
-
-      // Trigger onboarding if not yet completed
-      const settings = settingsManager.getSettings();
-      if (!settings.onboarding_completed) {
-        setTimeout(() => {
-          if (dashboardWindow && !dashboardWindow.isDestroyed()) {
-            dashboardWindow.webContents.send('start-onboarding');
-          }
-        }, 500); // Short delay for setup pane to close
-      }
-    }
-    createDashboardWindow(); // Re-ensure dictation window is ready
-  }
-  return success;
-});
-
-ipcMain.handle('remove-sarvam-key', () => {
-  return secretManager.removeApiKey();
-});
-
-ipcMain.handle('has-sarvam-key', () => {
-  return secretManager.hasApiKey();
-});
-
-ipcMain.handle('get-logs', () => {
-  return logs;
-});
-
-ipcMain.on('clear-logs', () => {
-  logs.length = 0;
-});
-
-ipcMain.handle('get-onboarding-status', () => {
-  const settings = settingsManager.getSettings();
-  return !settings.onboarding_completed;
-});
-
-ipcMain.on('complete-onboarding', () => {
-  settingsManager.updateSettings({ onboarding_completed: true });
-  console.log('[LeelaV1] Onboarding completed.');
-});
-
-// ── Optimizer IPC Handlers ──────────────────────────────────
-ipcMain.handle('optimize-file', async (event, filePath, options) => {
-  try {
-    const result = await optimizer.optimizeFile(filePath, {
-      ...options,
-      onProgress: (stage, percent, message) => {
-        notifyDashboard('optimizer-progress', { stage, percent, message });
-      },
-    });
-    return result;
-  } catch (e) {
-    console.error('[LeelaV1] optimize-file error:', e);
-    return { success: false, error: String(e) };
-  }
-});
-
-ipcMain.handle('analyze-file', async (event, filePath) => {
-  try {
-    return await optimizer.analyzeFile(filePath);
-  } catch (e) {
-    return { error: String(e) };
-  }
-});
-
-ipcMain.handle('get-optimizer-stats', () => {
-  return optimizer.getOptimizerStats();
-});
-
-ipcMain.handle('get-optimizer-settings', () => {
-  return optimizer.getOptimizerSettings();
-});
-
-ipcMain.on('update-optimizer-settings', (event, newSettings) => {
-  optimizer.updateOptimizerSettings(newSettings);
-});
-
-ipcMain.handle('get-optimizer-metrics', () => {
-  return optimizer.getOptimizerMetrics();
-});
-
-ipcMain.on('reset-optimizer-learning', () => {
-  optimizer.resetLearning();
-});
-

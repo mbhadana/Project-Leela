@@ -910,6 +910,19 @@
                         </div>
                     </div>
 
+                    <div class="setting-item">
+                        <div class="setting-label">
+                            <span class="setting-title">Microphone</span>
+                            <span class="setting-desc">Select the audio input device for dictation.</span>
+                        </div>
+                        <div class="lang-dropdown-container">
+                            <select id="mic-select" onchange="updateMicSelection(this.value)"
+                                style="width: 100%; background: var(--bg-activity); border: 1px solid var(--border); border-radius: 4px; padding: 8px 12px; font-size: 12px; color: var(--text-primary); cursor: pointer; height: 32px; outline: none;">
+                                <option value="default">Default Microphone</option>
+                            </select>
+                        </div>
+                    </div>
+
                     <div style="border-top: 1px solid var(--border); margin: 10px 0; padding-top: 15px;">
                         <h2 style="margin-bottom: 20px;">Sarvam AI API</h2>
                         <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: 15px;">
@@ -947,7 +960,7 @@
             <p style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 30px;">
                 Leela requires a Sarvam AI API key to function.<br>
                 Generate your key at <a href="#"
-                    onclick="require('electron').shell.openExternal('https://dashboard.sarvam.ai')"
+                    onclick="window.leela.shell.openExternal('https://dashboard.sarvam.ai')"
                     style="color: var(--accent); text-decoration: none; font-weight: 600;">dashboard.sarvam.ai</a>
             </p>
 
@@ -980,7 +993,7 @@
         <!-- STEP 1: Welcome -->
         <div class="ob-step" id="ob-step-1">
             <div class="ob-title">Welcome to Leela</div>
-            <div class="ob-subtitle">Leela works everywhere on your system using just one shortcut.</div>
+            <div class="ob-subtitle">Leela works everywhere on your system with simple keyboard shortcuts.</div>
             <div class="ob-instruction">Press the shortcut to begin</div>
             <div class="ob-kbd">Ctrl + Space</div>
             <div class="ob-subtitle" style="font-size: 12px; color: #666;">Press it now to try</div>
@@ -1051,7 +1064,8 @@
             <div class="ob-title">Leela Workflow</div>
             <div class="ob-workflow">
                 <strong>Dictate:</strong> Press Ctrl+Space → Speak<br>
-                <strong>Improve:</strong> Select Text → Ctrl+Space → Command
+                <strong>Improve:</strong> Select Text → Ctrl+Space → Command<br>
+                <strong>Assistant Panel:</strong> Press Alt+Space
             </div>
             <button class="ob-btn" onclick="completeOnboarding()">Start Using Leela</button>
             <div class="ob-trust">Leela learns as you use it.</div>
@@ -1081,7 +1095,7 @@
     </div>
 
     <script>
-        const { ipcRenderer } = require('electron');
+        // Renderer communicates through the preload bridge (window.leela)
 
         const languages = [
             { code: 'en', name: 'English' },
@@ -1168,7 +1182,7 @@
         });
 
         async function loadHistory() {
-            const history = await ipcRenderer.invoke('get-history');
+            const history = await window.leela.invoke('get-history');
             const list = document.getElementById('activity-list');
             list.innerHTML = '';
 
@@ -1202,7 +1216,7 @@
         }
 
         async function loadSettings() {
-            const settings = await ipcRenderer.invoke('get-settings');
+            const settings = await window.leela.invoke('get-settings');
             document.getElementById('overlayEnabled').checked = settings.overlayEnabled;
             document.getElementById('historyEnabled').checked = settings.historyEnabled;
             document.getElementById('startWithWindows').checked = settings.startWithWindows;
@@ -1215,11 +1229,45 @@
             }
             renderLanguageList(languages, 'settings');
             renderLanguageList(languages, 'home');
+
+            // Microphone Dropdown Logic
+            currentMicId = settings.micDeviceId || 'default';
+            populateMicrophones();
+
             updateApiKeyStatus();
         }
 
+        async function populateMicrophones() {
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const audioInputs = devices.filter(d => d.kind === 'audioinput');
+                const select = document.getElementById('mic-select');
+
+                // Clear existing except default
+                select.innerHTML = '<option value="default">Default Microphone</option>';
+
+                audioInputs.forEach((device) => {
+                    // Sometimes device labels are empty if permission isn't granted yet
+                    const label = device.label || `Microphone ${select.options.length}`;
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.textContent = label;
+                    select.appendChild(option);
+                });
+
+                select.value = currentMicId;
+            } catch (err) {
+                console.error('[SETTINGS] Error enumerating devices:', err);
+            }
+        }
+
+        function updateMicSelection(deviceId) {
+            currentMicId = deviceId;
+            updateSetting('micDeviceId', deviceId);
+        }
+
         async function updateApiKeyStatus() {
-            const hasKey = await ipcRenderer.invoke('has-sarvam-key');
+            const hasKey = await window.leela.invoke('has-sarvam-key');
             const badge = document.getElementById('api-status-badge');
             if (hasKey) {
                 badge.textContent = 'CONNECTED ✅';
@@ -1237,12 +1285,12 @@
             const originalText = badge.textContent;
             badge.textContent = 'Testing...';
 
-            const response = await ipcRenderer.invoke('test-sarvam-key', null);
+            const response = await window.leela.invoke('test-sarvam-key', null);
             if (response.ok) {
                 alert('Connection successful!');
                 updateApiKeyStatus();
             } else {
-                alert(`Connection failed: ${response.error}`);
+                alert(`Connection failed: ${response.error} `);
                 updateApiKeyStatus();
             }
         }
@@ -1251,7 +1299,7 @@
             // Show the integrated setup pane
             document.getElementById('setup-pane').style.display = 'flex';
             // Also show the cancel button if there's already a key
-            ipcRenderer.invoke('has-sarvam-key').then(hasKey => {
+            window.leela.invoke('has-sarvam-key').then(hasKey => {
                 const cancelBtn = document.getElementById('btn-setup-cancel');
                 if (cancelBtn) cancelBtn.style.display = hasKey ? 'block' : 'none';
             });
@@ -1259,7 +1307,7 @@
 
         async function removeApiKey() {
             if (confirm('Are you sure you want to remove your Sarvam API key? The app will require a new key to function.')) {
-                await ipcRenderer.invoke('remove-sarvam-key');
+                await window.leela.invoke('remove-sarvam-key');
                 updateApiKeyStatus();
                 // Immediately show setup if key is removed
                 document.getElementById('setup-pane').style.display = 'flex';
@@ -1270,7 +1318,7 @@
         }
 
         function updateSetting(key, value) {
-            ipcRenderer.send('update-setting', { [key]: value });
+            window.leela.send('update-setting', { [key]: value });
         }
 
         function showTab(id) {
@@ -1296,7 +1344,7 @@
         }
 
         async function loadLogs() {
-            const logs = await ipcRenderer.invoke('get-logs');
+            const logs = await window.leela.invoke('get-logs');
             const container = document.getElementById('log-container');
             container.textContent = logs.join('\n');
             container.scrollTop = container.scrollHeight;
@@ -1305,15 +1353,14 @@
         async function copyLogs() {
             const logs = document.getElementById('log-container').textContent;
             if (logs) {
-                const { clipboard } = require('electron');
-                clipboard.writeText(logs);
+                window.leela.clipboard.writeText(logs);
                 alert('All logs copied to clipboard.');
             }
         }
 
         async function clearLogs() {
             if (confirm('Clear all logs?')) {
-                ipcRenderer.send('clear-logs');
+                window.leela.send('clear-logs');
                 loadLogs();
             }
         }
@@ -1322,10 +1369,10 @@
             document.getElementById('panel-input').textContent = item.input || '(None)';
             document.getElementById('panel-output').textContent = item.output || '(No result)';
 
-            let metaText = `ID: ${item.id} | Status: ${item.status}`;
+            let metaText = `ID: ${item.id} | Status: ${item.status} `;
             if (item.qualityScores) {
-                metaText += `\n\nPOLISH QUALITY METRICS:`;
-                metaText += `\n- Meaning Preservation: ${item.qualityScores.meaning}/10`;
+                metaText += `\n\nPOLISH QUALITY METRICS: `;
+                metaText += `\n - Meaning Preservation: ${item.qualityScores.meaning}/10`;
                 metaText += `\n- Grammar & Clarity: ${item.qualityScores.grammar}/10`;
                 metaText += `\n- Natural Tone: ${item.qualityScores.tone}/10`;
             }
@@ -1340,8 +1387,7 @@
         function copyFromPanel(elementId) {
             const text = document.getElementById(elementId).innerText;
             if (text) {
-                const { clipboard } = require('electron');
-                clipboard.writeText(text);
+                window.leela.clipboard.writeText(text);
 
                 // Visual feedback
                 const btn = event.currentTarget;
@@ -1406,15 +1452,15 @@
         function completeOnboarding() {
             obActive = false;
             document.getElementById('onboarding-overlay').style.display = 'none';
-            ipcRenderer.send('complete-onboarding');
+            window.leela.send('complete-onboarding');
         }
 
-        ipcRenderer.on('start-onboarding', () => {
+        window.leela.on('start-onboarding', () => {
             console.log('[ONBOARDING] Received start-onboarding signal.');
             startOnboarding();
         });
 
-        ipcRenderer.on('history-updated', () => {
+        window.leela.on('history-updated', () => {
             console.log('Dashboard: History received update notification');
             if (obActive && (obCurrentStep === 2 || obCurrentStep === 3)) {
                 obShowStep(3);
@@ -1425,7 +1471,7 @@
         });
 
         async function checkInitialState() {
-            const hasKey = await ipcRenderer.invoke('has-sarvam-key');
+            const hasKey = await window.leela.invoke('has-sarvam-key');
             if (!hasKey) {
                 document.getElementById('setup-pane').style.display = 'flex';
             } else {
@@ -1447,7 +1493,7 @@
             statusMsg.textContent = 'Testing connection...';
             statusMsg.style.color = 'var(--text-primary)';
 
-            const response = await ipcRenderer.invoke('test-sarvam-key', keyInput);
+            const response = await window.leela.invoke('test-sarvam-key', keyInput);
             if (response.ok) {
                 statusMsg.textContent = 'Connection successful! ✅';
                 statusMsg.style.color = 'var(--success)';
@@ -1463,7 +1509,7 @@
 
         async function saveSetupKey() {
             const keyInput = document.getElementById('setup-api-key').value.trim();
-            const success = await ipcRenderer.invoke('save-sarvam-key', keyInput);
+            const success = await window.leela.invoke('save-sarvam-key', keyInput);
             if (success) {
                 document.getElementById('setup-pane').style.display = 'none';
                 updateApiKeyStatus();
@@ -1472,21 +1518,23 @@
             }
         }
 
-        ipcRenderer.on('key-saved', () => {
+        window.leela.on('key-saved', () => {
             checkInitialState();
             updateApiKeyStatus();
         });
 
         // --- Integrated Recording & Mic Logic ---
-        const fs = require('fs');
-        const path = require('path');
+
         const micIndicator = document.getElementById('mic-indicator');
 
         let mediaRecorder = null;
         let currentStream = null;
         let chunks = [];
         let isRecording = false;
+        let isStartingRecording = false;
+        let pendingStop = false;
         let isProcessingVoice = false; // Lock to prevent overlapping sessions
+        let currentMicId = 'default';
 
         function setMicStatus(text, cls) {
             micIndicator.title = 'Microphone: ' + text;
@@ -1521,7 +1569,8 @@
                 }
             } catch (e) { }
             try {
-                await navigator.mediaDevices.getUserMedia({ audio: true });
+                const constraints = currentMicId === 'default' ? { audio: true } : { audio: { deviceId: { exact: currentMicId } } };
+                await navigator.mediaDevices.getUserMedia(constraints);
                 updateMicUI('granted');
             } catch (e) { updateMicUI('denied'); }
         }
@@ -1534,7 +1583,8 @@
 
         async function requestMicAccess() {
             try {
-                const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const constraints = currentMicId === 'default' ? { audio: true } : { audio: { deviceId: { exact: currentMicId } } };
+                const s = await navigator.mediaDevices.getUserMedia(constraints);
                 try { s.getTracks().forEach(t => t.stop()); } catch (_) { }
                 updateMicUI('granted');
             } catch (e) {
@@ -1569,7 +1619,7 @@
                         }
                         const average = sum / bufferLength;
                         const normalized = Math.min(1, (average * 1.5) / 128);
-                        ipcRenderer.send('mic-data', normalized);
+                        window.leela.send('mic-data', normalized);
                         lastSend = now;
                     }
                     animationFrameId = requestAnimationFrame(update);
@@ -1584,17 +1634,20 @@
             audioContext = null;
             analyser = null;
             // Send a final zero to clear waveform
-            ipcRenderer.send('mic-data', 0);
+            window.leela.send('mic-data', 0);
         }
 
         async function startRecording() {
-            if (isRecording || isProcessingVoice) {
-                console.warn('[RECORDER] startRecording blocked: already recording or processing.');
+            if (isRecording || isProcessingVoice || isStartingRecording) {
+                console.warn(`[${new Date().toISOString()}] [RECORDER] startRecording blocked. recording:${isRecording}, processing:${isProcessingVoice}, starting:${isStartingRecording}`);
                 return;
             }
             try {
-                console.log('[RECORDER] Requesting stream and starting recording...');
-                currentStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                isStartingRecording = true;
+                pendingStop = false;
+                console.log(`[${new Date().toISOString()}] [RECORDER] Requesting stream and starting recording...`);
+                const constraints = currentMicId === 'default' ? { audio: true } : { audio: { deviceId: { exact: currentMicId } } };
+                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
                 mediaRecorder = new MediaRecorder(currentStream, { mimeType: 'audio/webm' });
                 chunks = [];
                 mediaRecorder.ondataavailable = (e) => {
@@ -1608,12 +1661,20 @@
                 startMicAnalysis(currentStream);
 
                 setMicStatus('Recording', 'recording');
-                ipcRenderer.send('update-app-state', 'LISTENING');
+                window.leela.send('update-app-state', 'LISTENING');
                 console.log('[RECORDER] Recording started successfully.');
+                
+                isStartingRecording = false;
+                if (pendingStop) {
+                    console.log('[RECORDER] Processing deferred stop signal.');
+                    pendingStop = false;
+                    stopRecording();
+                }
             } catch (e) {
                 console.error('[RECORDER] Failed to start recording', e);
+                isStartingRecording = false;
                 updateMicUI('denied');
-                ipcRenderer.send('update-app-state', 'ERROR');
+                window.leela.send('update-app-state', 'ERROR');
             }
         }
 
@@ -1628,7 +1689,7 @@
             // NEW: Stop visual analysis
             stopMicAnalysis();
 
-            ipcRenderer.send('update-app-state', 'PROCESSING');
+            window.leela.send('update-app-state', 'PROCESSING');
             mediaRecorder.stop();
             try {
                 if (currentStream && currentStream.getTracks) {
@@ -1650,28 +1711,29 @@
             try {
                 const blob = new Blob(chunks, { type: 'audio/webm' });
                 const arrayBuffer = await blob.arrayBuffer();
-                const buffer = Buffer.from(arrayBuffer);
 
-                // Get safe temporary path from the main process
-                const tempDir = await ipcRenderer.invoke('get-temp-path');
-                const localPath = path.join(tempDir, `recording-${Date.now()}.webm`);
-
-                // ASYNC WRITE: Prevent UI freeze
-                await fs.promises.writeFile(localPath, buffer);
+                // Save recording via main process (secure — no renderer-side fs access)
+                const saveResult = await window.leela.invoke('save-temp-recording', arrayBuffer, `recording-${Date.now()}.webm`);
+                if (!saveResult.ok) {
+                    console.error('[API] Failed to save recording:', saveResult.error);
+                    window.leela.send('update-app-state', 'ERROR');
+                    return;
+                }
+                const localPath = saveResult.path;
 
                 console.log(`[API] Triggering 'process-recording' IPC with ${localPath}`);
-                const result = await ipcRenderer.invoke('process-recording', localPath);
+                const result = await window.leela.invoke('process-recording', localPath);
 
                 if (result && result.ok) {
                     console.log('[API] process-recording succeeded.');
                     loadHistory();
                 } else {
                     console.error('[API] process-recording failed:', result ? result.error : 'unknown');
-                    ipcRenderer.send('update-app-state', 'ERROR');
+                    window.leela.send('update-app-state', 'ERROR');
                 }
             } catch (e) {
                 console.error('[API] Error in onRecordingStop:', e);
-                ipcRenderer.send('update-app-state', 'ERROR');
+                window.leela.send('update-app-state', 'ERROR');
             } finally {
                 chunks = [];
                 isProcessingVoice = false; // Release lock GUARANTEED
@@ -1679,17 +1741,24 @@
             }
         }
 
-        ipcRenderer.on('hotkey-toggle', () => {
-            console.log('[HOTKEY] hotkey-toggle event received.');
+        window.leela.on('hotkey-toggle', () => {
+            console.log(`[${new Date().toISOString()}] [HOTKEY] hotkey-toggle event received.`);
             playPop();
             if (obActive && obCurrentStep === 1) {
                 obShowStep(2);
             }
+            
+            if (isStartingRecording) {
+                console.log('[HOTKEY] Start in progress, deferring stop...');
+                pendingStop = true;
+                return;
+            }
+
             if (!isRecording) startRecording();
             else stopRecording();
         });
 
-        ipcRenderer.on('play-command-sound', () => {
+        window.leela.on('play-command-sound', () => {
             playPop();
         });
 

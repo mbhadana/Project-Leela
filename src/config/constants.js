@@ -1,0 +1,25 @@
+module.exports = {
+  API_ENDPOINTS: {
+    SARVAM_SPEECH_TO_TEXT: 'https://api.sarvam.ai/speech-to-text',
+    SARVAM_CHAT_COMPLETIONS: 'https://api.sarvam.ai/v1/chat/completions'
+  },
+  VOICE_MODELS: {
+    TRANSLATION: 'saaras:v3'
+  },
+  THRESHOLDS: {
+    MIN_QUALITY_SCORE_THRESHOLD: 7
+  },
+  TIMEOUTS: {
+    TRANSCRIPTION_API_MS: 45000,
+    API_KEY_TEST_MS: 5000,
+    RESTART_WINDOW_MS: 60000
+  },
+  SYSTEM: {
+    MAX_RESTARTS_IN_WINDOW: 3,
+    HOTKEY_DEBOUNCE_MS: 100,
+    LONG_PRESS_THRESHOLD_MS: 500,
+    INSTANT_TAP_THRESHOLD_MS: 300,
+    HOTKEY_START_WATCHDOG_MS: 1500,
+    HOTKEY_STOP_WATCHDOG_MS: 2000
+  }
+};

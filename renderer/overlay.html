@@ -139,7 +139,6 @@
     <div id="status-label"></div>
 
     <script>
-        const { ipcRenderer } = require('electron');
         const topBar = document.getElementById('top-bar');
         const statusLabel = document.getElementById('status-label');
 
@@ -148,7 +147,7 @@
         let animationFrameId = null;
         let resultTimeout = null;
 
-        ipcRenderer.on('mic-data', (event, level) => {
+        window.leela.on('mic-data', (level) => {
             currentMicLevel = level;
         });
 
@@ -163,13 +162,13 @@
             if (state === 'LISTENING') {
                 let speed = 0.5 + (currentMicLevel * 10);
                 flowPos -= speed;
-                if (flowPos <= -200) flowPos += 200; // Correct wrap for 200% background-size
+                if (flowPos <= -200) flowPos += 200;
 
                 topBar.style.backgroundPosition = `${flowPos}% 0`;
                 let glow = 5 + (currentMicLevel * 20);
                 topBar.style.boxShadow = `0 0 ${glow}px var(--color-listening)`;
             } else if (state === 'PROCESSING') {
-                let speed = 5; // Fast but smooth for background-position
+                let speed = 5;
                 flowPos -= speed;
                 if (flowPos <= -200) flowPos += 200;
                 topBar.style.backgroundPosition = `${flowPos}% 0`;
@@ -188,11 +187,10 @@
         // Start render loop
         animationFrameId = requestAnimationFrame(animateFlow);
 
-        ipcRenderer.on('update-status', (event, stateKey, message) => {
+        window.leela.on('update-status', (stateKey, message) => {
             console.log('[OVERLAY] New state:', stateKey, 'Message:', message);
             topBar.dataset.state = stateKey;
 
-            // Handle status label
             if (message) {
                 statusLabel.textContent = message;
                 statusLabel.classList.add('visible');
@@ -200,19 +198,16 @@
                 statusLabel.classList.remove('visible');
             }
 
-            // Manage CSS animations explicitly to prevent conflicts
             if (stateKey !== 'PROCESSING') {
                 topBar.style.animation = 'none';
             } else {
                 topBar.style.animation = '';
             }
 
-            // Start animation loop if needed
             if (stateKey !== 'IDLE' && !animationFrameId) {
                 animateFlow();
             }
 
-            // Cleanup previous result timeout
             if (resultTimeout) {
                 clearTimeout(resultTimeout);
                 resultTimeout = null;
@@ -225,11 +220,11 @@
                         statusLabel.classList.remove('visible');
                     }
                     resultTimeout = null;
-                }, 3000); // Show results/warnings for 3s (increased for readability)
+                }, 3000);
             }
         });
 
-        ipcRenderer.on('hide-status', () => {
+        window.leela.on('hide-status', () => {
             topBar.dataset.state = 'IDLE';
         });
     </script>

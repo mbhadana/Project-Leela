@@ -1,0 +1,294 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "You are an AI task assistant.\n\nYou help the user perform tasks using available tools.\n\nAvailable tools:\n- Gmail Tool -> send emails\n- Gmail Contact Search Tool -> find contact emails\n- Google Calendar Tool -> create events or reminders\n\nRules:\n1. If the user asks to send an email, first search the contact using Gmail Contact Search.\n2. If multiple contacts exist, ask the user to choose.\n3. Confirm before sending an email.\n4. Use Gmail Tool only after confirmation.\n5. For alarms or reminders, create a Google Calendar event.\n6. Always use tools instead of pretending to complete the task."
+        }
+      },
+      "id": "663e0fab-5925-437a-ae1f-88877c090246",
+      "name": "Task Assistant AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        896,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "5111c97e-9fb7-4a32-a829-ebc12a18bd6f",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        704,
+        528
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "UcJHENSUPFzy7BVu",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "contextWindowLength": 10
+      },
+      "id": "f29daea5-e840-49c0-9970-9d4547d8faa1",
+      "name": "Conversation Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        832,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Send an email via Gmail. Use this when the user wants to send an email. Required: recipient email address, subject, and message body.",
+        "sendTo": "={{ $fromAI('recipient_email', 'The email address of the recipient', 'string') }}",
+        "subject": "={{ $fromAI('email_subject', 'The subject line of the email', 'string') }}",
+        "message": "={{ $fromAI('email_body', 'The body content of the email', 'string') }}",
+        "options": {}
+      },
+      "id": "e000da1d-cc3c-4ed1-80da-49ad2050dad9",
+      "name": "Gmail Tool",
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        528
+      ],
+      "webhookId": "7637bb63-8aca-482a-9c69-b35403a61334",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "eGJWFhcDZcSaDxsn",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Create a Google Calendar event. Use this when the user wants to schedule a meeting or create a calendar event. Required: event title, start time, end time.",
+        "calendar": {
+          "__rl": true,
+          "mode": "id",
+          "value": "bhadana26major@gmail.com"
+        },
+        "start": "={{ $fromAI('start_time', 'Start date and time in ISO format (e.g., 2024-01-15T15:00:00)', 'string') }}",
+        "end": "={{ $fromAI('end_time', 'End date and time in ISO format (e.g., 2024-01-15T16:00:00)', 'string') }}",
+        "additionalFields": {
+          "attendees": "={{ $fromAI('attendees', 'Comma-separated email addresses of attendees', 'string', '') }}",
+          "description": "={{ $fromAI('event_description', 'Description of the event', 'string', '') }}",
+          "summary": "={{ $fromAI('event_title', 'The title of the calendar event', 'string') }}"
+        }
+      },
+      "id": "51603540-95c8-4f76-b90a-628be26c778d",
+      "name": "Google Calendar Tool",
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [
+        1088,
+        528
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "VuIISnC8KegIN0oP",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Search Gmail for email addresses by contact name. Use this when you have a recipient name but need to find their email address.",
+        "operation": "getAll",
+        "limit": 5,
+        "filters": {
+          "q": "={{ $fromAI('search_query', 'Name or email to search for in Gmail', 'string') }}"
+        }
+      },
+      "id": "cde639da-0385-4b89-b318-0fbb51a100ba",
+      "name": "Gmail Contact Search Tool",
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.2,
+      "position": [
+        1216,
+        528
+      ],
+      "webhookId": "afdad46c-b132-4707-9ef1-8d3bbe19b494",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "eGJWFhcDZcSaDxsn",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "1dd513bd-2569-4f2f-96ee-db52c5300a07",
+      "name": "Chat Interface",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        480,
+        304
+      ],
+      "webhookId": "a2c03866-181d-4078-9fe3-c4c481fdad22"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "leela-command",
+        "options": {}
+      },
+      "id": "webhook-command-input-01",
+      "name": "Webhook Command Input",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        480,
+        120
+      ],
+      "webhookId": "leela-command"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "chatInput",
+              "value": "={{$json.command || $json.body?.command || 'No command provided'}}"
+            },
+            {
+              "name": "sessionId",
+              "value": "={{$json.user_id || $json.body?.user_id || 'leela-user'}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "normalize-webhook-input-01",
+      "name": "Normalize Webhook Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        672,
+        120
+      ]
+    }
+  ],
+  "connections": {
+    "Task Assistant AI Agent": {
+      "main": [
+        []
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Task Assistant AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Task Assistant AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Task Assistant AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Calendar Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Task Assistant AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Contact Search Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Task Assistant AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat Interface": {
+      "main": [
+        [
+          {
+            "node": "Task Assistant AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Command Input": {
+      "main": [
+        [
+          {
+            "node": "Normalize Webhook Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Webhook Input": {
+      "main": [
+        [
+          {
+            "node": "Task Assistant AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "42be87a6647206523cdf8a0baf98f1e52c87dbade025b3aad530dc2481b1c080"
+  }
+}

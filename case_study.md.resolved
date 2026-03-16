@@ -1,0 +1,81 @@
+# CASE STUDY: Leela V1 — The Autonomous Self-Optimizing AI Assistant
+
+## 📌 Executive Summary
+**Leela V1** is a high-performance, production-grade Electron application designed to act as a seamless AI execution engine. Unlike standard assistants, Leela features a unique **Self-Optimizing File & Performance System** and a **Zero-Secret Security Architecture**, making it the first portable, autonomous AI utility that improves its own efficiency without human supervision.
+
+---
+
+## 🛠️ The Challenge
+As AI applications become more complex, they face three critical hurdles:
+1.  **Secret Leakage:** Distributing production code often risks exposing developer API keys or sensitive configurations.
+2.  **Performance Decay:** Continuous data processing leads to bloated storage and slowing execution speeds.
+3.  **User Friction:** Complex installation steps and "heavy" UI often deter senior professional users.
+
+---
+
+## 💡 The Solution
+
+### 1. Autonomous Optimization Engine (The "Brain")
+I designed a modular 7-stage pipeline that manages file health and execution speed.
+*   **Entropy-Based Strategy:** Automatically detects file compressibility using Shannon entropy before choosing an optimization path.
+*   **Recursive Learning:** A deterministic learning module tracks every optimization run, adjusting strategies per file type based on historical success.
+*   **Validation & Rollback:** Implements a strict "Safety First" rule—every output is validated against a 95% perceptual quality threshold; failing files are instantly rolled back to preserve user data.
+
+### 2. Secure "Zero-Secret" Distribution
+To solve the security risk of sharing the app, I built a custom hardened build pipeline:
+*   **V8 Bytecode Compilation:** Core logic is compiled to raw bytecode ([.jsc](file:///c:/Users/admin/LeelaV1/dist_protected/main.jsc)), making it resilient against reverse engineering.
+*   **SafeStorage Encryption:** User API keys are never stored in plaintext; they are encrypted via OS-level secure storage.
+*   **Secret Scanner:** A pre-distribution scanner automatically halts packaging if any hardcoded tokens or [.env](file:///c:/Users/admin/LeelaV1/.env) files are detected.
+
+### 3. Invisible UX Model
+Leela operates via a global low-latency pattern:
+*   **Pattern-Based Interaction:** Tap for dictation, Select+Tap to polish, Select+Hold for voice commands.
+*   **System Agnostic:** Works across macOS and Windows with unified hotkey behaviors.
+
+---
+
+## 🚀 Key Technologies
+*   **Runtime:** Electron / Node.js
+*   **Protection:** Bytenode (V8 Bytecode) / JS-Obfuscator
+*   **Engines:** Sharp (Image Optimization) / FFmpeg (Media Pipeline)
+*   **AI:** Sarvam AI Integration
+*   **DevOps:** Custom NodeJS Security Scanner & Packager
+
+---
+
+## 📈 Impact & Results
+*   **Security:** Achieved a **Verified Zero-Secret** distribution package.
+*   **Efficiency:** Average file size reduction of **30-60%** while maintaining ≥95% perceptual quality.
+*   **Portability:** Created a fully standalone, **700MB portable ZIP** that requires zero installation.
+*   **Self-Maintenance:** System autonomously manages temp files and optimizes its own learning profile based on usage.
+
+---
+
+## 🎨 System Architecture Overview
+
+```mermaid
+graph TD
+    User((User)) -->|Hotkey| App[Leela V1 Core]
+    App -->|Protect| BT[V8 Bytecode Engine]
+    App -->|Analyze| Opt[Autonomous Optimizer]
+    
+    subgraph "The Optimizer Pipeline"
+    Opt --> A[Analyzer]
+    A --> S[Strategy Selector]
+    S --> L[Learner]
+    L --> S
+    S --> E[Engine]
+    E --> V[Validator]
+    V -->|Pass| Log[Logger]
+    V -->|Fail| RB[Rollback]
+    end
+    
+    subgraph "Security Layer"
+    BT --> Sec[OS Secure Storage]
+    Sec --> API[Sarvam AI]
+    end
+```
+
+---
+
+*This project demonstrates a senior-level approach to software engineering: prioritizing root-cause solutions, deterministic behavior, and industrial-grade security.*

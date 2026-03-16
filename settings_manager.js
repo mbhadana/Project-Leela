@@ -2,11 +2,19 @@ const { app } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
-const USER_DATA_DIR = app.getPath('userData');
-const SETTINGS_FILE = path.join(USER_DATA_DIR, 'settings.json');
+let USER_DATA_DIR;
+let SETTINGS_FILE;
+
+function initializePaths() {
+    if (!USER_DATA_DIR) {
+        USER_DATA_DIR = app.getPath('userData');
+        SETTINGS_FILE = path.join(USER_DATA_DIR, 'settings.json');
+    }
+}
 
 // Migration: Check for legacy paths
 function migrateSettings() {
+    initializePaths();
     const rootSettings = path.join(__dirname, 'settings.json');
     const programDataSettings = path.join(process.env.ALLUSERSPROFILE || 'C:\\ProgramData', 'LeelaV1', 'settings.json');
 
@@ -43,7 +51,7 @@ migrateSettings();
 
 const DEFAULT_SETTINGS = {
     overlayEnabled: true,
-    hotkey: 'Control+Space',
+    hotkey: 'Ctrl+Space',
     historyEnabled: true,
     historyRetentionLimit: 200,
     startWithWindows: false,
@@ -54,11 +62,13 @@ const DEFAULT_SETTINGS = {
     optimizerQualityThreshold: 95,
     optimizerMaxFileSizeMB: 500,
     optimizerAutoLearn: true,
+    micDeviceId: 'default',
 };
 
 let settings = { ...DEFAULT_SETTINGS };
 
 function loadSettings() {
+    initializePaths();
     if (fs.existsSync(SETTINGS_FILE)) {
         try {
             const data = fs.readFileSync(SETTINGS_FILE, 'utf8');

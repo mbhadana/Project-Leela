@@ -181,25 +181,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Keyboard shortcut Ctrl + Space
     let keyHoldTimeout = null;
-    let isKeyHolding = false;
 
     window.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.code === 'Space') {
             e.preventDefault();
-            if (e.repeat) return; // Prevent multiple triggers on key repeat
+            if (e.repeat) return;
             
             const selection = getEditorSelection();
             if (!selection) {
+                isHolding = false;
                 startDictating();
                 return;
             }
 
             // Setup hold detection for keyboard
-            isKeyHolding = false;
+            isHolding = false;
             keyHoldTimeout = setTimeout(() => {
-                isKeyHolding = true;
+                isHolding = true;
                 if (window.va) window.va('event', { name: 'voice_instructions_triggered_kbd' });
-                startDictating(); // This handles the transcript in handleSpeechFinal
+                startDictating();
             }, 500);
         }
     });
@@ -211,13 +211,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 keyHoldTimeout = null;
                 
                 const selection = getEditorSelection();
-                if (selection && !isKeyHolding) {
-                    // Was a quick press, trigger improvement
+                if (selection && !isHolding) {
                     performImprovement(selection);
                 }
-                // If it WAS holding, startDictating was already called, and handleSpeechFinal will handle it
-                isKeyHolding = false;
+                // isHolding is reset by stopDictation() which is called on recognition end
             }
         }
     });
+
 });

@@ -2,7 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const editor = document.getElementById('editor');
     const dictateBtn = document.getElementById('dictate-btn');
     const btnText = document.getElementById('btn-text');
-    const suggestionChips = document.querySelectorAll('.flex.flex-wrap.items-center button');
+    const suggestionChips = document.querySelectorAll('.suggestion-chip');
     
     let isDictating = false;
     let holdTimeout = null;

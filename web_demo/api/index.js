@@ -116,7 +116,7 @@ app.post('/api/improve', async (req, res) => {
     if (!text) return res.status(400).json({ success: false, error: 'Text is required' });
 
     try {
-        console.log(`[Server] Improving text: "${text.substring(0, 50)}..." with command: ${command}`);
+        console.log("API_RECEIVED_REQUEST:", req.body);
         const response = await axios.post('https://api.sarvam.ai/v1/chat/completions', {
             model: "sarvam-m",
 
@@ -147,7 +147,7 @@ STRICT RULES:
         });
 
         const rawOutput = response.data.choices[0].message.content;
-        console.log(`[Server] Raw AI output: "${rawOutput}"`);
+        console.log("AI_RAW_RESPONSE:", response.data);
         const result = sanitizeOutput(rawOutput);
         console.log(`[Server] Sanitized result: "${result}"`);
         res.json({ success: true, result });
@@ -159,6 +159,14 @@ STRICT RULES:
 });
 
 // API Endpoint to record user interest
+app.get('/api/debug-env', (req, res) => {
+    res.json({
+        has_key: !!process.env.SARVAM_API_KEY,
+        key_length: process.env.SARVAM_API_KEY ? process.env.SARVAM_API_KEY.length : 0,
+        key_start: process.env.SARVAM_API_KEY ? process.env.SARVAM_API_KEY.substring(0, 3) + '...' : 'none'
+    });
+});
+
 app.post('/api/interest', (req, res) => {
     const { email, name, message } = req.body;
 

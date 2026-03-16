@@ -99,6 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         try {
             if (window.va) window.va('event', { name: 'improvement_started', data: { command: command } });
+            console.log("REQUEST_PAYLOAD:", { text: textToImprove, command: command });
             const response = await fetch('/api/improve', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

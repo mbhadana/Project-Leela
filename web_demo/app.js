@@ -75,10 +75,40 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Auto-expand textarea
+    const sc3Indicators = document.getElementById('screen3-indicators');
+    const headerArea = document.getElementById('header-area');
+
+    function switchScreen(screenNum) {
+        console.log(`[UI] Switching to Screen ${screenNum}`);
+        
+        // Default resets
+        sc3Indicators.classList.add('hidden');
+        headerArea.classList.remove('hidden');
+        dictateBtn.style.width = '265px';
+        btnText.textContent = "Start dictating";
+        btnText.style.width = "auto";
+        btnText.style.left = "auto";
+
+        if (screenNum === 1) {
+            dictateBtn.style.width = '265px';
+            btnText.textContent = "Start dictating";
+        } else if (screenNum === 2) {
+            dictateBtn.style.width = '485px';
+            btnText.textContent = "Leela is thinking..."; // Second screen mode often processing
+            btnText.style.width = "370px";
+            btnText.style.textAlign = "center";
+        } else if (screenNum === 3) {
+            dictateBtn.style.width = '658px';
+            btnText.textContent = "Speak instructions to modify the selected text.";
+            btnText.style.width = "573px";
+            btnText.style.textAlign = "center";
+            sc3Indicators.classList.remove('hidden');
+        }
+    }
+
+    // Auto-expand textarea (Static for specs, but keeping for usage)
     function autoExpand() {
-        editor.style.height = 'auto';
-        editor.style.height = (editor.scrollHeight) + 'px';
+        // editor.style.height = 'auto'; // Disabled to maintain Frame 2558 bounds
     }
 
     editor.addEventListener('input', autoExpand);
@@ -91,14 +121,24 @@ document.addEventListener('DOMContentLoaded', () => {
         return editor.value.substring(start, end).trim();
     }
 
+    // Monitor selection to switch screens
+    editor.addEventListener('mouseup', () => {
+        const selection = getEditorSelection();
+        if (selection) {
+            switchScreen(2);
+        } else {
+            switchScreen(1);
+        }
+    });
+
     async function performImprovement(textToImprove, command = "polish") {
         if (!textToImprove) return;
         
+        switchScreen(2);
         btnText.textContent = "Leela is thinking...";
         editor.classList.add('opacity-50');
         
         try {
-            if (window.va) window.va('event', { name: 'improvement_started', data: { command: command } });
             console.log("REQUEST_PAYLOAD:", { text: textToImprove, command: command });
             const response = await fetch('/api/improve', {
                 method: 'POST',
@@ -113,15 +153,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const oldText = editor.value;
                 editor.value = oldText.substring(0, start) + data.result + oldText.substring(end);
                 
-                // Visual feedback
                 editor.classList.remove('opacity-50');
-                editor.classList.add('bg-emerald-50');
-                setTimeout(() => editor.classList.remove('bg-emerald-50'), 1500);
-            } else if (data.success && !data.result) {
-                console.warn("AI returned empty result");
-                editor.classList.remove('opacity-50');
+                editor.classList.add('bg-white/10');
+                setTimeout(() => editor.classList.remove('bg-white/10'), 1500);
             } else {
-                // User-friendly error messages from backend
                 const errorMsg = data.error || "Failed to process request.";
                 alert("Leela says: " + errorMsg);
             }
@@ -131,37 +166,11 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             editor.classList.remove('opacity-50');
             stopDictation();
-            autoExpand();
+            switchScreen(selection ? 2 : 1);
         }
     }
 
-    // Mouse events for Hold vs Click
-    dictateBtn.addEventListener('mousedown', (e) => {
-        if (isDictating) return;
-        
-        isHolding = false;
-        holdTimeout = setTimeout(() => {
-            const selection = getEditorSelection();
-            if (selection) {
-                isHolding = true;
-                startDictating();
-            }
-        }, 500);
-    });
-
-    dictateBtn.addEventListener('mouseup', () => {
-        clearTimeout(holdTimeout);
-        if (isHolding) return;
-        
-        const selection = getEditorSelection();
-        if (selection) {
-            performImprovement(selection);
-        } else {
-            startDictating();
-        }
-    });
-
-    // Suggestion Chips
+    // Suggestion Chips (Update for Screen 3 context if needed)
     suggestionChips.forEach(chip => {
         chip.addEventListener('click', () => {
             const selection = getEditorSelection() || editor.value;
@@ -181,6 +190,33 @@ document.addEventListener('DOMContentLoaded', () => {
             console.warn("Recognition already started or failed", e);
         }
     }
+
+    // Mouse events for Hold vs Click
+    dictateBtn.addEventListener('mousedown', (e) => {
+        if (isDictating) return;
+        
+        isHolding = false;
+        holdTimeout = setTimeout(() => {
+            const selection = getEditorSelection();
+            if (selection) {
+                isHolding = true;
+                switchScreen(3);
+                startDictating();
+            }
+        }, 500);
+    });
+
+    dictateBtn.addEventListener('mouseup', () => {
+        clearTimeout(holdTimeout);
+        if (isHolding) return;
+        
+        const selection = getEditorSelection();
+        if (selection) {
+            performImprovement(selection);
+        } else {
+            startDictating();
+        }
+    });
 
     // Keyboard shortcut Ctrl + Space
     let keyHoldTimeout = null;
@@ -202,6 +238,7 @@ document.addEventListener('DOMContentLoaded', () => {
             keyHoldTimeout = setTimeout(() => {
                 isHolding = true;
                 if (window.va) window.va('event', { name: 'voice_instructions_triggered_kbd' });
+                switchScreen(3);
                 startDictating();
             }, 500);
         }
